@@ -209,7 +209,42 @@ caminho exato dos menus, endereçado à **Julia ou à Letícia** se acontecer de
 
 ---
 
-## 11. Como o JP quer trabalhar
+## 11. Regras da FECAP para uso de IA
+
+O **Guia para o Uso Responsavel de IA na FECAP** (versao 2.0, 29/07/2026) vale para este
+projeto. Nao e recomendacao — tem sancao prevista.
+https://www.fecap.br/wp-content/uploads/2026/08/Guia-para-o-Uso-Responsavel-de-IA-na-FECAP.pdf
+
+**Art. 5 — programacao com IA e USO CONDICIONAL.** Nao e liberado por padrao: depende de
+criterio do professor e tem que constar no plano de ensino, no plano de aula ou na instrucao
+da atividade. **Confirmar com o professor antes de seguir usando IA para escrever codigo.**
+
+**Art. 6, paragrafo unico — a Declaracao de Uso de IA e obrigatoria** em trabalhos finais e
+projetos. Tem que conter:
+
+1. Ferramenta e **versao do modelo** (ex.: Claude Opus 5 / `claude-opus-5`)
+2. Descricao de como foi usada
+3. Os **prompts principais**
+4. Quais trechos ou entregas foram afetados
+
+Modelo padronizado no Portal do Aluno. Como este projeto usa IA para escrever codigo e
+documentacao, a declaracao precisa acompanhar a entrega da FECART.
+
+**Art. 3 — a responsabilidade e integralmente do aluno**, inclusive por erro factual, vies ou
+alucinacao. Vale lembrar que o `Observado.cs` foi escrito por IA e **nunca compilou**: se for
+para a entrega sem alguem abrir na Unity e testar, o risco e de quem assina.
+
+**Proibido (Art. 5):** delegar redacao sem declarar (equiparado a plagio) · por dado sigiloso
+institucional em IA aberta · usar dado pessoal de terceiro sem consentimento (LGPD).
+
+**Sancoes (Art. 13):** advertencia · anulacao do trabalho · reprovacao na disciplina.
+
+O Art. 12, que homologa o Microsoft Copilot, vale para o corpo tecnico-administrativo — nao
+proibe o aluno de usar outra ferramenta.
+
+---
+
+## 12. Como o JP quer trabalhar
 
 - Responder em **português do Brasil**
 - Ir direto à execução; explicação curta antes, detalhe depois se for pedido

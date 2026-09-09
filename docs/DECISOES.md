@@ -6,6 +6,33 @@ duas semanas sem saber o que estava em jogo.
 
 ---
 
+## 09/09/2026 — Apagar o `Observado.cs`
+
+**Decidiu:** JP
+
+O `Observado.cs` foi removido do repositório. O JP avaliou que não valia usar.
+
+**Estado dele quando foi apagado:** 218 linhas, nunca importado por nenhuma Unity (não
+existia `.meta` em lugar nenhum), não estava anexado a nenhum objeto e nenhum outro script
+o chamava. Era código morto no repositório — apagar não removeu nada de dentro do jogo.
+
+**Isto reverte parcialmente a decisão de 03/09** ("Manter o plano do sistema de visão"),
+cujo argumento era que a Julia começaria a detecção com o arquivo pronto em vez de partir
+de página em branco. Sem ele, a página em branco voltou — e a detecção de campo de visão
+é a tarefa mais cara do projeto (13,3 h no PERT).
+
+**Recuperável a qualquer momento**, o arquivo está no histórico:
+
+```
+git show 5c01bd2:"KRLH funciona2/Assets/Manager/ObjetosScripts/Observado.cs" > Observado.cs
+```
+
+**Em aberto, e é do JP:** a detecção de campo de visão continua no plano para a Fase A, ou
+o projeto cai para a versão simples — teleporte por tempo, sem checar visão — que o plano
+de produção mantém disponível desde 04/08? A resposta muda o que a Julia faz amanhã.
+
+---
+
 ## 03/09/2026 — Manter o plano do sistema de visão, sem cortar para a versão simples
 
 **Decidiu:** JP

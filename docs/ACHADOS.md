@@ -160,6 +160,59 @@ Renomear é seguro pela Unity (ela atualiza as referências), mas **não é segu
 
 ---
 
+## 🟡 Letícia sem acesso aos assets — causa: ZIP do GitHub não traz LFS
+
+Verificado em 08/09/2026 na máquina do JP, read-only.
+
+Relato: "a Letícia não conseguiu pegar os assets da Julia". **A causa não está na
+Julia, e não está na máquina da Letícia. Está no ZIP.**
+
+O lado da Julia foi verificado por três ângulos e passa nos três:
+
+- Os 3 commits de `nonattoNNTT <ju.nonatto2003@gmail.com>`, de 01 e 02/09, trazem
+  todos os assets: os 5 `.blend`, o `untitled 1.fbx`, as texturas do quarto, do
+  ursinho e a UI.
+- `git lfs push origin main --dry-run` retorna **zero** objetos pendentes. Os 56
+  arquivos de LFS estão no servidor — nada ficou preso na máquina dela.
+- `.gitattributes` cobre `*.blend` e `*.fbx`. No disco são binário real.
+
+**A causa:** o botão "Download ZIP" do GitHub **não resolve Git LFS**. O que o Git
+guarda para um arquivo LFS é um ponteiro de texto de 131 bytes, e é isso que vai
+no ZIP. Exemplo real, o blob de `Untitled.blend` (o ursinho) no HEAD:
+
+```
+version https://git-lfs.github.com/spec/v1
+oid sha256:5eb1f5e5236202e79e2bfbd1c25e7bccff147e9578ab214d830b4a2859260b2d
+size 241252
+```
+
+131 bytes contra os 241.252 bytes do arquivo real. **No ZIP da Letícia, 56
+arquivos estão assim** — todo `.blend`, o `.fbx`, todas as texturas e a fonte do
+TextMesh Pro. São **13,6 MB de arte que não vêm**, e a Unity mostra modelo vazio
+ou textura quebrada.
+
+**Consequência que importa mais que os assets:** o ZIP não tem a pasta `.git`.
+Sem ela a Letícia não dá `pull` nem `push`. É por isso que ela tem **zero commits**
+no repositório — os únicos autores em toda a história são a Julia (3) e o JP
+(`Yshinu`, 2 em 08/09). Trabalhando por ZIP ela está fora do fluxo por construção,
+e qualquer coisa que ela fizer não existe em cópia nenhuma.
+
+**Conserto:** `git lfs install` e depois `git clone` numa pasta nova — nunca por
+cima do ZIP. Conferir com `head -c 45` em cada `.blend` que não sobrou ponteiro.
+Antes de apagar a pasta do ZIP, salvar fora o que ela tiver mexido lá dentro.
+
+**A confirmar com ela:** se o ZIP veio do botão do GitHub (é esta a causa) ou se
+foi um ZIP que a Julia compactou da pasta dela (aí é outro problema, provavelmente
+a `Library/` vindo junto).
+
+**Efeito colateral encontrado:** existe um segundo clone na máquina do JP,
+`Documents/GitHub/fragmentofecartt` (com dois T), parado no commit de 01/09 e
+apontando para o mesmo remote. É cópia velha, sem os assets da Julia, e confunde
+quem abrir por ela — candidato a apagar depois de confirmar que não tem trabalho
+local dentro.
+
+---
+
 ## 🟢 O que foi verificado e está correto
 
 Vale registrar, porque significa que não precisa ser reverificado:
