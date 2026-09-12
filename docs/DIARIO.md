@@ -5,6 +5,57 @@ fazer por causa disso.
 
 ---
 
+## 10/09/2026 (quinta) — dia do ALPHA
+
+### A Julia entregou — corrige o registro de ontem
+
+A entrada de 09/09 diz que o trabalho dela estava sem backup há 7 dias. **Era verdade na hora
+em que foi escrita** — o `git log` só via até 02/09 porque o push dela ainda não tinha saído.
+Ela deu push em **09/09 às 12:48**, cerca de uma hora depois do card entrar no Trello.
+
+Três commits com conteúdo chegaram:
+
+| Commit | O que |
+|---|---|
+| `0220361` | 59 arquivos, **+8.219 linhas** — fonte Sketchy, teclas C/E/Shift/Tab, texturas da cama, `TabTutorial.cs`, `PlayerInputActions.cs` |
+| `0cc5291` | Shader Graph e material do Poster |
+| `75746ed` | `ss155.blend`, texturas, ajustes de material |
+
+A `Tela_1.unity` recebeu **mais de 4.600 linhas** de mudança somando os três. O maior risco
+isolado do projeto — trabalho de montagem de cena existindo em uma máquina só — está fechado.
+
+### `.meta` órfão removido
+
+O `Observado.cs` foi apagado em 09/09 às 11:40; a Unity da Julia já tinha gerado o
+`Observado.cs.meta`, que entrou no push dela às 12:48. O merge deixou o `.meta` sem par —
+o único órfão do repositório, contra a propriedade "nenhum `.meta` órfão" que a auditoria de
+03/09 tinha verificado. Removido nesta entrada. **Nada estava anexado a ele**: o GUID
+`9ac0b5071dde43a4d94ba6626c530093` aparecia 0 vezes na `Tela_1.unity`.
+
+### O que a entrega da Julia NÃO resolveu
+
+Os três 🔴 do [`ACHADOS.md`](ACHADOS.md) continuam abertos, e um deles piorou:
+
+- **Zero prefabs** — e a `Tela_1.unity` cresceu mais 4.600 linhas. Quanto maior a cena, pior
+  o conflito quando a Letícia voltar a trabalhar em paralelo.
+- **Nenhum FBX de ursinho** — só o `untitled 1.fbx`, que é o kit de parede.
+- **Dois arquivos de Input System** ainda coexistindo.
+
+### Dois pontos novos para alguém olhar
+
+**A fonte entrou:** `Sketchy.ttf` mais o `Sketchy SDF.asset`. O `CLAUDE.md` exige uma fonte
+só, com acentuação em português testada. Numa fonte desenhada à mão, faltar `ã`, `ç` ou `õ`
+é risco real — **alguém precisa escrever uma frase com acento e olhar na tela.** Isso é
+julgamento humano.
+
+**Os nomes provisórios voltaram:** `CADEIRAofJHJJHJ.png`, `ss155.blend`,
+`textura mesa12222.png`, `Material.mat`, `New Shader Graph.shadergraph`. A
+`textura mesa1.png` virou `CADEIRAofJHJJHJ.png` — textura de mesa com nome de cadeira. É a
+mesma armadilha do `Untitled.blend` já registrada no `ACHADOS`. Duas mensagens de commit são
+literalmente "Commit".
+
+---
+
 ## 09/09/2026 (quarta) — ⚠️ véspera do ALPHA
 
 ### O alerta que importa mais que tudo nesta entrada
