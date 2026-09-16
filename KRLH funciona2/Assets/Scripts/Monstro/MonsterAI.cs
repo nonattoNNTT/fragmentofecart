@@ -153,6 +153,8 @@ public class MonsterAI : MonoBehaviour
     public float ambushTime = 12f;
     public float ambushChance = 0.45f;    // chance base de esperar ao inves de procurar
     public float ambushPathThreshold = 18f; // caminho maior que isso favorece emboscar
+    public float ambushSpotRadius = 12f;    // ate que distancia da rota dela ele procura uma quina
+    public float ambushSpotMaxDetour = 30f; // caminho maximo da quina ate a rota (dar a volta na parede)
     public bool directorEnabled = true;
     public float boredomTime = 35f;       // tempo perdido antes de receber uma dica
     public float rumorError = 9f;         // o quanto a dica e imprecisa, em metros
@@ -206,6 +208,7 @@ public class MonsterAI : MonoBehaviour
 
     [Header("O que ele esta pensando - so leitura")]
     public string currentThought = "...";
+    public string stateHistory = "";      // ultimas trocas de estado, com o tempo (mais recente primeiro)
     public MonsterState state = MonsterState.Patrol;
     public float awareness;
     public bool canSee;
@@ -628,6 +631,7 @@ public class MonsterAI : MonoBehaviour
             // Sem pontos montados na cena: procura uma quina sozinho
             if (!TryFindAmbushSpot(out ambushSpot))
             {
+                stateHistory = "(sem quina para emboscar)  |  " + stateHistory;
                 return false;
             }
 
@@ -685,6 +689,9 @@ public class MonsterAI : MonoBehaviour
 
     private void EnterState(MonsterState next)
     {
+        stateHistory = Time.time.ToString("0.0") + "s " + next + "  |  " + stateHistory;
+        if (stateHistory.Length > 160) stateHistory = stateHistory.Substring(0, 160);
+
         state = next;
         stateTimer = 0f;
 
@@ -1235,19 +1242,24 @@ public class MonsterAI : MonoBehaviour
         spot = transform.position;
         bool found = false;
 
-        for (int i = 0; i < 16; i++)
+        // Varre a volta toda em passos fixos (com um pouco de jitter) em vez
+        // de sortear: sorteio puro deixava de achar quina uma vez em dez.
+        for (int i = 0; i < 36; i++)
         {
-            Vector3 dir = Quaternion.Euler(0f, Random.Range(0f, 360f), 0f) * Vector3.forward;
-            Vector3 candidate = expected + dir * Random.Range(4f, 9f);
+            float angle = i * 10f + Random.Range(-5f, 5f);
+            float radius = (i % 3 == 0) ? 5f : (i % 3 == 1) ? 8f : ambushSpotRadius;
+            Vector3 dir = Quaternion.Euler(0f, angle, 0f) * Vector3.forward;
+            Vector3 candidate = expected + dir * radius;
 
             if (!TrySnapToNavMesh(candidate, 2.5f, out Vector3 valid)) continue;
 
             // Precisa ser escondido de onde ela vem...
             if (!Physics.Linecast(eyes, valid + Vector3.up * playerHeightOffset, obstacleMask)) continue;
 
-            // ...mas perto o bastante andando para ela passar por ali
+            // ...mas perto o bastante andando para ela passar por ali. O limite
+            // precisa caber a volta numa parede inteira, senao nunca acha quina.
             float toExpected = PathLengthBetween(valid, expected);
-            if (float.IsPositiveInfinity(toExpected) || toExpected > 14f) continue;
+            if (float.IsPositiveInfinity(toExpected) || toExpected > ambushSpotMaxDetour) continue;
 
             if (!IsReachable(valid, out float fromMe)) continue;
 

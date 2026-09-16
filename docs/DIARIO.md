@@ -33,6 +33,12 @@ alternar a cada quadro (tocando som a cada troca). Agora enquanto ouve, continua
 | B · Player corre 8 m/s por 9 quinas e para escondido | — | perdeu aos 8,3 s, reencontrou aos 9,0 s, pegou aos 11,2 s |
 | C · Ronda 90 s, Player a 166 m, sem Director | 10 células de 8 m · 32 m de alcance | ~29 células · 87 m de alcance |
 | D · Player parado a 8 m, 120° fora do cone | nunca visto | visto aos 3,9 s |
+| E · Emboscada automática (chance forçada a 100 %) | nunca (precisava de pontos manuais) | 4 s após perder de vista foi para uma quina escondida do último ponto visto, esperou 12 s e voltou a rondar |
+
+A busca de quina varre 36 ângulos em 3 raios (5/8/12 m) e aceita desvio de até 30 m de caminho —
+as paredes do labirinto têm 11–12 m, então dar a volta numa custa mais que os 14 m da primeira
+versão, que nunca achava quina. O campo `stateHistory` no Inspector mostra as últimas trocas de
+estado com o tempo, para depurar sem Console.
 
 Ajustes de calibragem ficam no Inspector do `Monstro` (todos `public` com `[Header]`).
 O `Corpo` (cubo) continua sendo só o filho; o Ursão entra no lugar dele sem mexer na IA.
