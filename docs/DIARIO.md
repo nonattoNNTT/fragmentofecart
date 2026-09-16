@@ -5,6 +5,46 @@ fazer por causa disso.
 
 ---
 
+## 16/09/2026 (quarta) — véspera do BETA
+
+### Tentativa de contato direto com as outras máquinas — falhou
+
+O JP pediu comunicação direta com as sessões da Julia, da Letícia e do Luigi. A ferramenta
+de mensagem entre sessões passou a existir nesta sessão, e foi usada. Resultado nas três:
+**"No agent named ... is reachable"**. As sessões de Remote Control que estavam online em
+08/09 não estão rodando hoje. Nenhuma mensagem foi entregue.
+
+### Zero commits em seis dias
+
+O último commit de conteúdo é o `75746ed` da Julia, de 09/09 às 12:48. Desde então só
+entraram commits de documentação, todos do JP. Só existe a branch `main` no servidor.
+
+O JP relata que a Julia **commitou em 15/09 na máquina dela, sem dar push**. Isso é
+invisível daqui — commit sem push existe em uma cópia só. É o mesmo risco de 03/09,
+agora na véspera do BETA. Ela está 2 commits atrás; o `pull` mescla limpo porque os dois só
+tocaram `docs/`.
+
+### Três cards marcados como concluídos ontem — e o Git diz que não
+
+Os três cards criados em 09/09 foram movidos para **"Revisão do PO"** e marcados como
+completos em **15/09 entre 18:01 e 18:03**, com **nenhum comentário**. Verificado em
+`origin/main` na mesma hora:
+
+| Card | Trello diz | Git diz |
+|---|---|---|
+| Luigi — ursinho, prefabs, escala | Concluído 18:01 | **Nenhum FBX de ursinho. Zero `.prefab`.** Nada dele entrou no repositório. |
+| Letícia — clone com LFS | Concluído 18:01 | **Zero commits dela**, como sempre. Não dá para verificar o clone daqui. |
+| JP — critério do ALPHA | Concluído 18:03 | **Nenhuma entrada em `DECISOES.md`.** Se foi decidido, não foi escrito. |
+
+**É a armadilha documentada na seção 8 do `CLAUDE.md`**, mais três vezes numa noite. A
+regra do `docs/README.md` resolve o empate: *confira no Git, não no Trello*. Pelo Git, os
+três estão abertos.
+
+Não é possível saber daqui quem marcou. O intervalo de 70 segundos entre os três sugere
+uma passada só, de uma pessoa.
+
+---
+
 ## 10/09/2026 (quinta) — dia do ALPHA
 
 ### A Julia entregou — corrige o registro de ontem
