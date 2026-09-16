@@ -7,6 +7,51 @@ fazer por causa disso.
 
 ## 16/09/2026 (quarta) — véspera do BETA
 
+### NavMesh completa na SampleScene + cubo do Monstro com `MonsterAI` (sessão nova, à tarde)
+
+**Pedido do JP:** pegar a última versão do GitHub, fazer a NavMesh completa na `SampleScene`
+e criar um cubo que futuramente será o monstro, com o `MonsterAI.cs` que ele enviou.
+
+**Contexto:** a `SampleScene` é o labirinto de teste — 583 paredes (cubos de 0,23 m de
+espessura, 8,9 m de altura) sobre um Chão de 243 × 222 m, tudo sob o objeto `Labirinto`.
+Isso **não muda a regra 4 do `CLAUDE.md`** (ursinhos não andam, Ursão sem NavMesh): a NavMesh
+aqui serve ao monstro de teste do labirinto. Se virar regra para o Ursão, é decisão do JP e
+vai para `DECISOES.md`.
+
+**Feito, tudo por Editor Script** (`Assets/Editor/MontadorNavMesh.cs`, menu **Valentina >
+NavMesh**), rodado e conferido dentro da Unity 6000.3.6f1 nesta máquina:
+
+- Objeto `NavMesh` com `NavMeshSurface` (pacote AI Navigation 2.0.9, já no projeto).
+  Agente Humanoid (raio 0,5 · altura 2), geometria por **colisores físicos**, voxel 0,125
+  (padrão seria 0,167 — as paredes finas pedem mais precisão), tile 256, `minRegionArea` 2.
+  Bake salvo em `Assets/Scenes/SampleScene/NavMesh-SampleScene.asset`.
+- **Resultado do bake:** 1.916 triângulos, 45.957 m² caminháveis, 4 regiões (a principal
+  tem 89 % — as outras são bolsões fechados por parede, sem saída mesmo). Conferido que
+  **nenhuma das 583 paredes tem NavMesh dentro** e que a borda fica a 0,5 m da parede.
+- `Player` recebeu `NavMeshModifier` (ignorar no bake) e foi para a camada **`player`** —
+  só nesta cena, por override do prefab. Motivo: o `MonsterAI` usa `Linecast` com máscara
+  "tudo menos a camada do jogador"; com Player e paredes em Default, ou o monstro via
+  através da parede ou a cápsula do jogador bloqueava a própria visão.
+- Cubo **`Monstro`**: raiz sem escala com o pé no chão (`NavMeshAgent` + `MonsterAI` +
+  `NavMeshModifier`) e filho `Corpo` (cubo 1 × 2 × 1 m, material `M_Monstro` no vermelho
+  `#D74143` da paleta). Nasce em (−42,4 · 0,45 · 20,6): 47 m de caminho e 28 m em linha reta
+  do Player, com parede no meio. `obstacleMask` = Default (só parede bloqueia a visão).
+- `MonsterAI.cs` copiado para `Assets/Scripts/Monstro/`. **Compilou sem aviso.**
+- **Testado em Play Mode:** agente sobre a malha, patrulha andando a 1,6 m/s; Player
+  teleportado a 6 m sem parede → `Hunt` → "Peguei ela."; depois voltou a `Patrol` e
+  `Investigate`. Zero erros no Console.
+
+**Pegadinha registrada:** `NavMeshAgent` escala `baseOffset` e `height` pelo `scale` do
+transform. Um cubo com scale (1, 2, 1) e `baseOffset` 1 flutua 1 m acima do chão. Por isso
+a raiz do Monstro é 1,1,1 e o cubo é filho. Quando o modelo do Ursão chegar, é só trocar o
+`Corpo` — agente e IA ficam.
+
+**O que a Julia/Letícia precisam fazer:** nada para a NavMesh funcionar — está bakeada e
+salva na cena. Se mexerem nas paredes do labirinto, rodar **Valentina > NavMesh > 1** de
+novo (idempotente). Sons do monstro (`footstepClips`, `spotSounds` etc.) estão vazios —
+arrastar quando o JP entregar os `.wav`.
+
+
 ### Tentativa de contato direto com as outras máquinas — falhou
 
 O JP pediu comunicação direta com as sessões da Julia, da Letícia e do Luigi. A ferramenta
