@@ -198,3 +198,41 @@ Os pedidos do JP estão citados textualmente nas entradas acima. Em resumo, a IA
 para: **ler e auditar o repositório**, **diagnosticar problemas de Git e LFS**, **escrever a
 documentação de processo** (`docs/`), **redigir cards de tarefa**, e **executar remoções e
 commits a pedido**. Não foi usada para produzir conteúdo do jogo.
+
+---
+
+## Sessão 2 — 16/09/2026 (quarta, tarde): NavMesh e Monstro
+
+Sessão **diferente** da registrada acima (aberta sem pasta e movida para o repositório).
+Mesma ferramenta, mesmo modelo (`claude-opus-5`), mesmo operador (JP).
+
+**Pedido:** *"Pega a ultima versão do github do meu projeto da Fecart 'Fragmento' e faz o
+NavMesh completo dentro da cena SampleScene"* e, em seguida, *"preciso que você crie um cubo
+dentro da cena, que futuramente vai ser o monstro, segue a IA que deveria ser aplicavel
+dentro dele"* (anexo `MonsterAI.cs`, escrito fora desta sessão).
+
+**Feito:** `git pull` (HEAD `6abe5e9`), abertura da Unity 6000.3.6f1 pelo MCP, escrita do
+Editor Script, execução dos menus, bake, validação e teste em Play Mode. Detalhes e números
+na entrada de 16/09 do `DIARIO.md`.
+
+**Esta sessão escreveu código de jogo.** Arquivos afetados:
+
+```
+KRLH funciona2/Assets/Editor/MontadorNavMesh.cs                       (novo — escrito pela IA)
+KRLH funciona2/Assets/Scripts/Monstro/MonsterAI.cs                    (novo — enviado pelo JP, copiado sem alteração)
+KRLH funciona2/Assets/Scenes/SampleScene.unity                        (alterado pelo Editor Script, não à mão)
+KRLH funciona2/Assets/Scenes/SampleScene/NavMesh-SampleScene.asset    (gerado pelo bake)
+KRLH funciona2/Assets/Art/Monstro/M_Monstro.mat                       (gerado pelo Editor Script)
+docs/DIARIO.md · docs/USO-DE-IA.md                                    (entradas novas)
+```
+
+**Segundo pedido (15h):** *"a IA ainda ta MUITO burra, melhora ela o MÁXIMO que conseguir"*.
+A IA reescreveu partes do `MonsterAI.cs` (ronda, busca, visão, emboscada, alcançabilidade) e
+mediu antes × depois em Play Mode. Tabela completa na entrada de 16/09 do `DIARIO.md`.
+O `MonsterAI.cs` **deixa de ser cópia sem alteração**: ~500 linhas foram adicionadas ou
+alteradas pela IA; o driver de teste usado na medição foi apagado antes do commit.
+
+**Terceiro pedido (16h20):** JP rejeitou o menu `Valentina` ("não faça tudo por comando,
+e sim com que possamos alterar depois"). `MontadorNavMesh.cs` apagado; o Monstro virou
+`Assets/Art/Monstro/Monstro.prefab`; regra nova na seção 5 do `CLAUDE.md`.
+

@@ -7,6 +7,117 @@ fazer por causa disso.
 
 ## 16/09/2026 (quarta) — véspera do BETA
 
+### Menu "Valentina" removido — tudo vira prefab e Inspector (JP, 16h20)
+
+JP: *"não é pra fazer por essas abas que é mais fácil pra VOCÊ. é pra fazer o que é mais
+fácil pra equipe em geral, não faça tudo por comando, e sim com que possamos alterar depois."*
+
+Ele está certo: o item "Criar cubo do Monstro" apagava e recriava o objeto, então qualquer
+ajuste feito no Inspector se perdia no clique seguinte. Feito:
+
+- **`Assets/Art/Monstro/Monstro.prefab`** — o Monstro agora é prefab (raiz com `NavMeshAgent`
+  + `MonsterAI` + `NavMeshModifier`, filho `Corpo`). A instância na `SampleScene` está
+  conectada a ele. Ajuste no prefab vale para qualquer cena; arrastar para outra cena é só
+  arrastar.
+- **`Assets/Editor/MontadorNavMesh.cs` apagado.** O menu `Valentina > NavMesh` não existe
+  mais. Nada se perdeu: o objeto `NavMesh` da cena tem o `NavMeshSurface` com o bake salvo.
+- Regra registrada na seção 5 do `CLAUDE.md`.
+
+**Como mexer daqui em diante (Julia/Letícia):**
+
+| Quer | Faz |
+|---|---|
+| Refazer a NavMesh depois de mover parede | Selecionar `NavMesh` na Hierarchy → Inspector → **Bake** |
+| Mudar velocidade, visão, ouvido do monstro | Selecionar `Monstro` → Inspector → campos com `[Header]`; **Overrides → Apply** se quiser que valha para o prefab |
+| Trocar o cubo pelo modelo do Ursão | Abrir o prefab, apagar `Corpo`, pôr o modelo como filho na posição (0, 0, 0) com o pé no chão |
+| Ver o que ele está pensando | Play → selecionar `Monstro` → `currentThought` e `stateHistory` no Inspector |
+| Pôr o monstro em outra cena | Arrastar `Monstro.prefab` para a cena; a cena precisa ter a própria `NavMeshSurface` bakeada |
+
+
+### `MonsterAI` v2 — "a IA ainda tá MUITO burra, melhora o máximo que conseguir" (JP, 15h)
+
+Oito causas concretas, todas medidas no labirinto antes de mexer:
+
+| # | Burrice | Correção |
+|---|---|---|
+| 1 | `huntSpeed` 3,4 < Player andando (5): **nunca pegava ninguém** | 6,3 — pega quem anda, não pega quem corre (8); a stamina decide |
+| 2 | Ronda em círculo de 12 m num mapa de 240 m | Ronda por cobertura: 12–32 m, evita os 10 últimos pontos, 30 % de "faro" para o lado do Player |
+| 3 | Investigação desistia no meio do corredor (timer contava desde a decisão) | Orçamento de viagem pelo comprimento real do caminho; `investigateTime` conta da chegada |
+| 4 | Parado, cone fixo — dava para ficar do lado dele | Gira a cabeça ±75° quando parado; a 4 m "sente" mesmo fora do cone (parede ainda bloqueia) |
+| 5 | Perdeu de vista → ponto aleatório em 5 m | Extrapola o rumo por 1,5 s; depois plano de busca ranqueado: rumo dela, atrás da quina de onde perdeu, alcançável |
+| 6 | Ouvido só valia ao entrar em Investigate; ruído tremia o destino todo frame | Re-mira ao ouvir de novo; pista do ouvido atualiza a cada 0,5 s |
+| 7 | Aceitava destino em bolsão fechado e ficava na parede | Todo destino passa por `IsReachable` (caminho completo) + detector de travado (2 s) |
+| 8 | Emboscada nunca acontecia (precisava de pontos manuais) | Sem pontos, acha sozinho uma quina escondida de onde ela vem, a ≤ 14 m de caminho |
+
+Bug pré-existente corrigido de quebra: certeza vinda do **ouvido** fazia Hunt ↔ Investigate
+alternar a cada quadro (tocando som a cada troca). Agora enquanto ouve, continua caçando o som.
+
+**Medido em Play Mode com um driver de teste** (arquivo temporário, não commitado):
+
+| Teste | Antes | Depois |
+|---|---|---|
+| A · Player foge andando (5 m/s), visto | impossível pegar | pego em 2,3 s, grudado por 89 m |
+| B · Player corre 8 m/s por 9 quinas e para escondido | — | perdeu aos 8,3 s, reencontrou aos 9,0 s, pegou aos 11,2 s |
+| C · Ronda 90 s, Player a 166 m, sem Director | 10 células de 8 m · 32 m de alcance | ~29 células · 87 m de alcance |
+| D · Player parado a 8 m, 120° fora do cone | nunca visto | visto aos 3,9 s |
+| E · Emboscada automática (chance forçada a 100 %) | nunca (precisava de pontos manuais) | 4 s após perder de vista foi para uma quina escondida do último ponto visto, esperou 12 s e voltou a rondar |
+
+A busca de quina varre 36 ângulos em 3 raios (5/8/12 m) e aceita desvio de até 30 m de caminho —
+as paredes do labirinto têm 11–12 m, então dar a volta numa custa mais que os 14 m da primeira
+versão, que nunca achava quina. O campo `stateHistory` no Inspector mostra as últimas trocas de
+estado com o tempo, para depurar sem Console.
+
+Ajustes de calibragem ficam no Inspector do `Monstro` (todos `public` com `[Header]`).
+O `Corpo` (cubo) continua sendo só o filho; o Ursão entra no lugar dele sem mexer na IA.
+
+
+### NavMesh completa na SampleScene + cubo do Monstro com `MonsterAI` (sessão nova, à tarde)
+
+**Pedido do JP:** pegar a última versão do GitHub, fazer a NavMesh completa na `SampleScene`
+e criar um cubo que futuramente será o monstro, com o `MonsterAI.cs` que ele enviou.
+
+**Contexto:** a `SampleScene` é o labirinto de teste — 583 paredes (cubos de 0,23 m de
+espessura, 8,9 m de altura) sobre um Chão de 243 × 222 m, tudo sob o objeto `Labirinto`.
+Isso **não muda a regra 4 do `CLAUDE.md`** (ursinhos não andam, Ursão sem NavMesh): a NavMesh
+aqui serve ao monstro de teste do labirinto. Se virar regra para o Ursão, é decisão do JP e
+vai para `DECISOES.md`.
+
+**Feito, tudo por Editor Script** (`Assets/Editor/MontadorNavMesh.cs`, menu **Valentina >
+NavMesh**), rodado e conferido dentro da Unity 6000.3.6f1 nesta máquina:
+
+- Objeto `NavMesh` com `NavMeshSurface` (pacote AI Navigation 2.0.9, já no projeto).
+  Agente Humanoid (raio 0,5 · altura 2), geometria por **colisores físicos**, voxel 0,125
+  (padrão seria 0,167 — as paredes finas pedem mais precisão), tile 256, `minRegionArea` 2.
+  Bake salvo em `Assets/Scenes/SampleScene/NavMesh-SampleScene.asset`.
+- **Resultado do bake:** 1.916 triângulos, 45.957 m² caminháveis, 4 regiões (a principal
+  tem 89 % — as outras são bolsões fechados por parede, sem saída mesmo). Conferido que
+  **nenhuma das 583 paredes tem NavMesh dentro** e que a borda fica a 0,5 m da parede.
+- `Player` recebeu `NavMeshModifier` (ignorar no bake) e foi para a camada **`player`** —
+  só nesta cena, por override do prefab. Motivo: o `MonsterAI` usa `Linecast` com máscara
+  "tudo menos a camada do jogador"; com Player e paredes em Default, ou o monstro via
+  através da parede ou a cápsula do jogador bloqueava a própria visão.
+- Cubo **`Monstro`**: raiz sem escala com o pé no chão (`NavMeshAgent` + `MonsterAI` +
+  `NavMeshModifier`) e filho `Corpo` (cubo 1 × 2 × 1 m, material `M_Monstro` no vermelho
+  `#D74143` da paleta). Nasce em (−42,4 · 0,45 · 20,6): 47 m de caminho e 28 m em linha reta
+  do Player, com parede no meio. `obstacleMask` = Default (só parede bloqueia a visão).
+- `MonsterAI.cs` copiado para `Assets/Scripts/Monstro/`. **Compilou sem aviso.**
+- **Testado em Play Mode:** agente sobre a malha, patrulha andando a 1,6 m/s; Player
+  teleportado a 6 m sem parede → `Hunt` → "Peguei ela."; depois voltou a `Patrol` e
+  `Investigate`. Zero erros no Console.
+- **Teste controlado de visão** (monstro parado, Player a 5 m dentro do cone): com parede
+  no meio `canSee=false`, awareness 0; sem parede `canSee=true`, awareness 1, `Hunt`.
+
+**Pegadinha registrada:** `NavMeshAgent` escala `baseOffset` e `height` pelo `scale` do
+transform. Um cubo com scale (1, 2, 1) e `baseOffset` 1 flutua 1 m acima do chão. Por isso
+a raiz do Monstro é 1,1,1 e o cubo é filho. Quando o modelo do Ursão chegar, é só trocar o
+`Corpo` — agente e IA ficam.
+
+**O que a Julia/Letícia precisam fazer:** nada para a NavMesh funcionar — está bakeada e
+salva na cena. Se mexerem nas paredes, selecionar `NavMesh` → **Bake** no Inspector
+(o menu `Valentina` foi removido às 16h20, ver entrada acima). Sons do monstro
+(`footstepClips`, `spotSounds` etc.) estão vazios — arrastar quando o JP entregar os `.wav`.
+
+
 ### Tentativa de contato direto com as outras máquinas — falhou
 
 O JP pediu comunicação direta com as sessões da Julia, da Letícia e do Luigi. A ferramenta
