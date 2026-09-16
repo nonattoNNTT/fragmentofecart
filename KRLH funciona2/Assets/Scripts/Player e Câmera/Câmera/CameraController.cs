@@ -19,6 +19,9 @@ public class CameraController : MonoBehaviour
     public float cameraDistance = 3.5f;
     public float cameraHeight = 1f;
 
+    [Tooltip("Deslocamento lateral da câmera. Positivo = direita, negativo = esquerda.")]
+    public float shoulderOffset = 0.6f;
+
     [Header("Camera Collision")]
     public float collisionRadius = 0.3f;
     public float collisionOffset = 0.15f;
@@ -141,8 +144,6 @@ public class CameraController : MonoBehaviour
                 cameraDistance
             );
 
-            // Quando existe uma parede,
-            // a câmera vai imediatamente para uma distância segura.
             currentCameraDistance = Mathf.Min(
                 currentCameraDistance,
                 targetDistance
@@ -150,8 +151,6 @@ public class CameraController : MonoBehaviour
         }
         else
         {
-            // Sem parede:
-            // volta suavemente para a distância normal.
             currentCameraDistance = Mathf.SmoothDamp(
                 currentCameraDistance,
                 cameraDistance,
@@ -160,24 +159,36 @@ public class CameraController : MonoBehaviour
             );
         }
 
-        // Garante que nunca passe da distância permitida
         currentCameraDistance = Mathf.Clamp(
             currentCameraDistance,
             0.15f,
             cameraDistance
         );
 
-        // Posição final da câmera
+        // =========================
+        // POSIÇÃO NO OMBRO
+        // =========================
+
+        Vector3 shoulderPosition =
+            cameraPivot.right * shoulderOffset;
+
         Vector3 cameraPosition =
             pivotPosition +
+            shoulderPosition +
             direction * currentCameraDistance;
 
         thirdPersonCamera.transform.position =
             cameraPosition;
 
-        // Faz a câmera olhar para o Pivot
+        // =========================
+        // OLHAR PARA O PLAYER
+        // =========================
+
+        Vector3 lookTarget =
+            pivotPosition;
+
         Vector3 lookDirection =
-            cameraPivot.position -
+            lookTarget -
             thirdPersonCamera.transform.position;
 
         if (lookDirection.sqrMagnitude > 0.001f)

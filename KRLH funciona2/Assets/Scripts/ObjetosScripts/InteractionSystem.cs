@@ -1,206 +1,246 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
+using System.Collections.Generic;
 
 public class InteractionSystem : MonoBehaviour
 {
-    [Header("Cameras")]
-    public Camera firstPersonCamera;
-    public Camera thirdPersonCamera;
+    [Header("Interação")]
+    [SerializeField] private float distanciaInteracao = 5f;
+    [SerializeField] private LayerMask camadasInteracao = ~0;
 
-    [Header("Interaction Distance")]
-    public float firstPersonDistance = 5f;
-    public float thirdPersonDistance = 10f;
+    [Header("Câmera")]
+    [SerializeField] private Camera cameraAtual;
 
-    [Header("Interaction UI")]
-    public GameObject interactionCanvas;
+    [Header("Destaque")]
+    [SerializeField] private float velocidadePiscar = 6f;
 
-    private InteractableScene currentInteractable;
+    private PlayerInputActions controls;
 
-    private void Start()
+    private IInterativo[] interativosAtuais;
+
+    private float tempoPiscar;
+    private bool destaqueAtivo;
+
+    private void Awake()
     {
-        if (interactionCanvas != null)
-        {
-            interactionCanvas.SetActive(false);
-        }
+        controls = new PlayerInputActions();
+    }
+
+    private void OnEnable()
+    {
+        controls.Enable();
+
+        controls.Player.Interact.performed += AoPressionarInteragir;
+    }
+
+    private void OnDisable()
+    {
+        controls.Player.Interact.performed -= AoPressionarInteragir;
+
+        controls.Disable();
+
+        RemoverDestaque();
     }
 
     private void Update()
     {
-        CheckForInteractable();
+        EncontrarInterativo();
+        AtualizarPiscar();
     }
 
-    // =========================================================
-    // VERIFICAR OBJETO
-    // =========================================================
-
-    private void CheckForInteractable()
+    private void EncontrarInterativo()
     {
-        Camera activeCamera = GetActiveCamera();
+        Camera cam = ObterCameraAtiva();
 
-        if (activeCamera == null)
+        if (cam == null)
         {
-            RemoveHighlight();
-            HideInteractionUI();
+            RemoverDestaque();
             return;
         }
 
-        float interactionDistance;
-
-        if (activeCamera == thirdPersonCamera)
-        {
-            interactionDistance = thirdPersonDistance;
-        }
-        else
-        {
-            interactionDistance = firstPersonDistance;
-        }
-
-        Ray ray = activeCamera.ViewportPointToRay(
-            new Vector3(0.5f, 0.5f, 0f)
+        Ray raio = new Ray(
+            cam.transform.position,
+            cam.transform.forward
         );
 
-        RaycastHit[] hits = Physics.RaycastAll(
-            ray,
-            interactionDistance,
-            ~0,
-            QueryTriggerInteraction.Ignore
+        Debug.DrawRay(
+            raio.origin,
+            raio.direction * distanciaInteracao,
+            Color.green
         );
 
-        // Organiza os objetos do mais próximo
-        // para o mais distante
-        System.Array.Sort(
-            hits,
-            (a, b) => a.distance.CompareTo(b.distance)
-        );
-
-        InteractableScene foundInteractable = null;
-
-        foreach (RaycastHit hit in hits)
+        if (Physics.Raycast(
+            raio,
+            out RaycastHit hit,
+            distanciaInteracao,
+            camadasInteracao,
+            QueryTriggerInteraction.Ignore))
         {
-            // Ignora o próprio Player
-            if (hit.transform.root == transform.root)
-                continue;
+            MonoBehaviour[] componentes =
+                hit.collider.GetComponentsInParent<MonoBehaviour>();
 
-            InteractableScene interactable =
-                hit.collider.GetComponent<InteractableScene>();
+            List<IInterativo> encontrados =
+                new List<IInterativo>();
 
-            // Caso o collider esteja em um filho
-            if (interactable == null)
+            foreach (MonoBehaviour componente in componentes)
             {
-                interactable =
-                    hit.collider.GetComponentInParent<InteractableScene>();
+                if (componente is IInterativo interativo)
+                {
+                    if (!encontrados.Contains(interativo))
+                    {
+                        encontrados.Add(interativo);
+                    }
+                }
             }
 
-            if (interactable != null)
+            if (encontrados.Count > 0)
             {
-                foundInteractable = interactable;
-                break;
+                IInterativo[] novosInterativos =
+                    encontrados.ToArray();
+
+                if (!MesmosInterativos(
+                    novosInterativos,
+                    interativosAtuais))
+                {
+                    RemoverDestaque();
+
+                    interativosAtuais =
+                        novosInterativos;
+
+                    AtivarDestaque();
+                }
+
+                return;
             }
         }
 
-        // =====================================================
-        // MUDOU DE OBJETO
-        // =====================================================
-
-        if (foundInteractable != currentInteractable)
-        {
-            // Remove destaque do objeto anterior
-            if (currentInteractable != null)
-            {
-                currentInteractable.SetHighlight(false);
-            }
-
-            // Coloca destaque no novo objeto
-            if (foundInteractable != null)
-            {
-                foundInteractable.SetHighlight(true);
-            }
-
-            currentInteractable = foundInteractable;
-        }
-
-        // =====================================================
-        // UI
-        // =====================================================
-
-        if (currentInteractable != null)
-        {
-            ShowInteractionUI();
-        }
-        else
-        {
-            HideInteractionUI();
-        }
+        RemoverDestaque();
     }
 
-    // =========================================================
-    // INPUT
-    // =========================================================
-
-    public void OnInteract(InputAction.CallbackContext context)
+    private void AoPressionarInteragir(
+        InputAction.CallbackContext contexto)
     {
-        if (!context.performed)
+        if (interativosAtuais == null)
             return;
 
-        if (currentInteractable != null)
+        foreach (IInterativo interativo in interativosAtuais)
         {
-            currentInteractable.Interact();
+            if (interativo != null)
+            {
+                interativo.Interagir();
+            }
         }
     }
 
-    // =========================================================
-    // UI
-    // =========================================================
-
-    private void ShowInteractionUI()
+    private Camera ObterCameraAtiva()
     {
-        if (interactionCanvas != null &&
-            !interactionCanvas.activeSelf)
+        if (cameraAtual != null &&
+            cameraAtual.isActiveAndEnabled)
         {
-            interactionCanvas.SetActive(true);
-        }
-    }
-
-    private void HideInteractionUI()
-    {
-        if (interactionCanvas != null &&
-            interactionCanvas.activeSelf)
-        {
-            interactionCanvas.SetActive(false);
-        }
-    }
-
-    // =========================================================
-    // HIGHLIGHT
-    // =========================================================
-
-    private void RemoveHighlight()
-    {
-        if (currentInteractable != null)
-        {
-            currentInteractable.SetHighlight(false);
-            currentInteractable = null;
-        }
-    }
-
-    // =========================================================
-    // CÂMERA
-    // =========================================================
-
-    private Camera GetActiveCamera()
-    {
-        if (firstPersonCamera != null &&
-            firstPersonCamera.isActiveAndEnabled)
-        {
-            return firstPersonCamera;
+            return cameraAtual;
         }
 
-        if (thirdPersonCamera != null &&
-            thirdPersonCamera.isActiveAndEnabled)
+        Camera[] cameras =
+            FindObjectsByType<Camera>(
+                FindObjectsInactive.Include,
+                FindObjectsSortMode.None
+            );
+
+        foreach (Camera cam in cameras)
         {
-            return thirdPersonCamera;
+            if (cam.isActiveAndEnabled)
+            {
+                return cam;
+            }
         }
 
         return null;
+    }
+
+    private void AtivarDestaque()
+    {
+        destaqueAtivo = true;
+        tempoPiscar = 0f;
+
+        if (interativosAtuais == null)
+            return;
+
+        foreach (IInterativo interativo in interativosAtuais)
+        {
+            if (interativo != null)
+            {
+                interativo.Destacar(true);
+            }
+        }
+    }
+
+    private void AtualizarPiscar()
+    {
+        if (!destaqueAtivo ||
+            interativosAtuais == null)
+            return;
+
+        tempoPiscar += Time.deltaTime;
+
+        bool estado =
+            Mathf.Sin(
+                tempoPiscar * velocidadePiscar
+            ) > 0f;
+
+        foreach (IInterativo interativo in interativosAtuais)
+        {
+            if (interativo != null)
+            {
+                interativo.Destacar(estado);
+            }
+        }
+    }
+
+    private void RemoverDestaque()
+    {
+        if (interativosAtuais != null)
+        {
+            foreach (IInterativo interativo in interativosAtuais)
+            {
+                if (interativo != null)
+                {
+                    interativo.Destacar(false);
+                }
+            }
+        }
+
+        interativosAtuais = null;
+        destaqueAtivo = false;
+        tempoPiscar = 0f;
+    }
+
+    private bool MesmosInterativos(
+        IInterativo[] a,
+        IInterativo[] b)
+    {
+        if (a == null || b == null)
+            return false;
+
+        if (a.Length != b.Length)
+            return false;
+
+        foreach (IInterativo interativoA in a)
+        {
+            bool encontrou = false;
+
+            foreach (IInterativo interativoB in b)
+            {
+                if (interativoA == interativoB)
+                {
+                    encontrou = true;
+                    break;
+                }
+            }
+
+            if (!encontrou)
+                return false;
+        }
+
+        return true;
     }
 }
