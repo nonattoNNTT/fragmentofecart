@@ -6,6 +6,10 @@ public class InteractableScene : MonoBehaviour
     [Header("Scene")]
     public string sceneName;
 
+    [Header("Condition")]
+    [SerializeField] private bool requireCondition = false;
+    [SerializeField] private GameObject conditionObject;
+
     [Header("Highlight")]
     public Color normalColor = Color.white;
     public Color highlightColor = Color.yellow;
@@ -35,7 +39,6 @@ public class InteractableScene : MonoBehaviour
 
         blinkTimer += Time.deltaTime * blinkSpeed;
 
-        // Alterna entre normal e destaque
         bool showHighlight = Mathf.Sin(blinkTimer) > 0f;
 
         SetColor(
@@ -51,9 +54,50 @@ public class InteractableScene : MonoBehaviour
 
     public void Interact()
     {
+        // Se precisa de condição, verifica primeiro
+        if (requireCondition)
+        {
+            if (conditionObject == null)
+            {
+                Debug.LogWarning(
+                    "A interação precisa de uma condição, " +
+                    "mas nenhum Condition Object foi definido!"
+                );
+
+                return;
+            }
+
+            InteractionCondition condition =
+                conditionObject.GetComponent<InteractionCondition>();
+
+            if (condition == null)
+            {
+                Debug.LogWarning(
+                    "O Condition Object não possui " +
+                    "o script InteractionCondition!"
+                );
+
+                return;
+            }
+
+            if (!condition.IsCompleted)
+            {
+                Debug.Log(
+                    "Interação bloqueada. " +
+                    "A condição ainda não foi cumprida."
+                );
+
+                return;
+            }
+        }
+
+        // Verifica o nome da cena
         if (string.IsNullOrEmpty(sceneName))
         {
-            Debug.LogWarning("Nome da cena não foi definido!");
+            Debug.LogWarning(
+                "Nome da cena não foi definido!"
+            );
+
             return;
         }
 
