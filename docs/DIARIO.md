@@ -40,6 +40,8 @@ NavMesh**), rodado e conferido dentro da Unity 6000.3.6f1 nesta máquina:
 - **Testado em Play Mode:** agente sobre a malha, patrulha andando a 1,6 m/s; Player
   teleportado a 6 m sem parede → `Hunt` → "Peguei ela."; depois voltou a `Patrol` e
   `Investigate`. Zero erros no Console.
+- **Teste controlado de visão** (monstro parado, Player a 5 m dentro do cone): com parede
+  no meio `canSee=false`, awareness 0; sem parede `canSee=true`, awareness 1, `Hunt`.
 
 **Pegadinha registrada:** `NavMeshAgent` escala `baseOffset` e `height` pelo `scale` do
 transform. Um cubo com scale (1, 2, 1) e `baseOffset` 1 flutua 1 m acima do chão. Por isso
