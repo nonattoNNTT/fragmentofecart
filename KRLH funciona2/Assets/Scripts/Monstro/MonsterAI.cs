@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.AI;
 
@@ -89,15 +90,17 @@ public class MonsterAI : MonoBehaviour
     public float playerHeightOffset = 1.2f;
 
     [Header("Visao")]
-    public float viewDistance = 18f;
-    public float viewAngle = 100f;        // angulo total do cone, em graus
+    public float viewDistance = 22f;
+    public float viewAngle = 110f;        // angulo total do cone, em graus
+    public float nearSenseRadius = 4f;    // tao perto que ele sente, mesmo fora do cone (parede ainda bloqueia)
     public LayerMask obstacleMask;        // o que bloqueia a visao; vazio = tudo menos o jogador
 
     [Header("Audicao")]
-    public float hearingRadius = 12f;
-    public float runningSpeed = 4.5f;     // acima disso o jogador faz barulho alto
-    public float sneakingSpeed = 1.5f;    // abaixo disso e quase silencio
+    public float hearingRadius = 14f;
+    public float runningSpeed = 6.5f;     // acima disso o jogador faz barulho alto (sprint do Player = 8)
+    public float sneakingSpeed = 3f;      // abaixo disso e quase silencio (andar do Player = 5)
     public float hearingError = 3f;       // som entrega a regiao, nunca o ponto exato
+    public float hearingUpdateInterval = 0.5f; // o ouvido atualiza a pista de tempos em tempos, nao todo quadro
 
     [Header("Consciencia")]
     public float awarenessGain = 1.4f;    // por segundo, com o jogador bem visivel
@@ -110,31 +113,42 @@ public class MonsterAI : MonoBehaviour
     public float flashlightWeight = 1.8f; // ser iluminado entrega o jogador mais rapido
 
     [Header("Movimento - o NavMeshAgent recebe estes valores")]
-    public float walkSpeed = 1.6f;
-    public float huntSpeed = 3.4f;
-    public float searchSpeed = 2.2f;
+    // Regra de ouro: mais rapido que o Player andando (5), mais lento que
+    // correndo (8). Andar nao salva; correr salva, mas a stamina acaba.
+    public float walkSpeed = 2.6f;
+    public float huntSpeed = 6.3f;
+    public float searchSpeed = 3.8f;
     public float angularSpeed = 220f;     // graus por segundo ao virar
     public float acceleration = 8f;
     public float turnSpeedWhenStopped = 6f; // giro manual parado, na emboscada
 
     [Header("Comportamento")]
-    public float patrolRadius = 12f;
+    public float patrolRadius = 32f;      // raio MAXIMO do proximo ponto de ronda
+    public float patrolMinRadius = 12f;   // raio minimo: obriga a cobrir terreno
+    public int patrolMemory = 10;         // quantos pontos recentes ele evita repetir
+    public float instinctChance = 0.3f;   // chance de a ronda puxar para o lado do jogador
     public float patrolWaitTime = 2.5f;
     public float arriveTolerance = 1.2f;
-    public float investigateTime = 9f;
-    public float searchInterval = 2.5f;
-    public float searchRadius = 5f;
-    public float catchDistance = 1.6f;
+    public float investigateTime = 12f;   // conta a partir da CHEGADA, nao da decisao
+    public float searchInterval = 2f;
+    public float searchRadius = 9f;
+    public float loseSightTime = 4f;      // sem ver por tanto tempo, a caca vira busca
+    public float lostPredictTime = 1.5f;  // quantos segundos ele extrapola o rumo de quem sumiu
+    public float catchDistance = 1.8f;
+
+    [Header("Olhar em volta - quando parado")]
+    public float scanAngle = 75f;         // graus para cada lado
+    public float scanSpeed = 1.1f;        // velocidade do vai-e-vem (rad/s)
 
     [Header("Cortar caminho")]
     // Enquanto ele te ve correndo, ele mira adiante de voce em vez de mirar em
     // voce. E o que transforma "correr atras" em "cortar o caminho".
     public bool interceptEnabled = true;
     public float interceptLookAhead = 1.1f;  // segundos de antecipacao
-    public float interceptMinSpeed = 2f;     // so vale a pena se voce estiver correndo
+    public float interceptMinSpeed = 4f;     // so vale a pena se voce estiver andando rapido
 
     [Header("Ritmo do medo")]
-    public float maxHuntTime = 22f;       // cacar mais que isso cansa o jogador
+    public float maxHuntTime = 25f;       // cacar mais que isso cansa o jogador
     public float retreatTime = 8f;
     public float ambushTime = 12f;
     public float ambushChance = 0.45f;    // chance base de esperar ao inves de procurar
@@ -145,7 +159,7 @@ public class MonsterAI : MonoBehaviour
 
     [Header("Pontos da fase - opcionais")]
     public Transform[] patrolPoints;      // vazio = ele sorteia pontos na propria NavMesh
-    public Transform[] ambushPoints;      // portas e corredores onde vale esperar
+    public Transform[] ambushPoints;      // portas e corredores onde vale esperar; vazio = ele acha uma quina sozinho
 
     // ---------------------------------------------------------
     // SOM
@@ -199,7 +213,10 @@ public class MonsterAI : MonoBehaviour
 
     // Percepcao interna
     private Vector3 lastKnownPosition;
+    private Vector3 lastSeenVelocity;     // para onde ela ia quando sumiu
+    private Vector3 lostSightPosition;    // onde EU estava quando ela sumiu
     private float timeSinceSeen = 999f;
+    private float hearingTimer;
     private float playerSpeed;
     private Vector3 playerVelocity;
     private Vector3 previousPlayerPosition;
@@ -214,6 +231,17 @@ public class MonsterAI : MonoBehaviour
     private int patrolIndex = -1;
     private Vector3 currentTarget;
     private Transform chosenAmbush;
+    private Vector3 ambushSpot;           // quina escolhida sozinho, quando nao ha ambushPoints
+    private bool hasAmbushSpot;
+    private bool investigateArrived;      // ja chegou no ponto e esta procurando em volta?
+    private float travelBudget;           // tempo maximo para chegar antes de desistir
+    private readonly List<Vector3> searchPlan = new List<Vector3>(); // lugares para checar, do mais provavel ao menos
+    private readonly List<Vector3> recentPatrol = new List<Vector3>();
+    private float destinationTimer;
+    private float stuckTimer;
+    private bool scanning;
+    private float scanBaseYaw;
+    private float scanTimer;
 
     // Navegacao interna
     private NavMeshAgent agent;
@@ -314,6 +342,8 @@ public class MonsterAI : MonoBehaviour
 
         stateTimer += Time.deltaTime;
         timeSinceSeen += Time.deltaTime;
+        hearingTimer += Time.deltaTime;
+        destinationTimer += Time.deltaTime;
 
         Sense();
         Think();
@@ -344,21 +374,37 @@ public class MonsterAI : MonoBehaviour
     {
         MeasurePlayerSpeed();
 
+        bool couldSee = canSee;
         canSee = CanSeePlayer();
 
         if (canSee)
         {
             lastKnownPosition = player.position;
+            lastSeenVelocity = playerVelocity;
             timeSinceSeen = 0f;
+        }
+        else if (couldSee)
+        {
+            // Acabou de perder de vista: guarda de onde eu olhava. E daqui que
+            // a busca decide o que esta "atras da quina".
+            lostSightPosition = transform.position;
         }
 
         canHear = CanHearPlayer();
 
-        // Som so marca a regiao, e a visao sempre ganha do ouvido
-        if (canHear && !canSee)
+        // Som so marca a regiao, e a visao sempre ganha do ouvido.
+        // Atualiza de tempos em tempos: todo quadro faria o destino tremer.
+        if (canHear && !canSee && hearingTimer >= hearingUpdateInterval)
         {
+            hearingTimer = 0f;
             Vector2 error = Random.insideUnitCircle * hearingError;
-            lastKnownPosition = player.position + new Vector3(error.x, 0f, error.y);
+            Vector3 heard = player.position + new Vector3(error.x, 0f, error.y);
+
+            if (TrySnapToNavMesh(heard, hearingError, out Vector3 valid))
+            {
+                lastKnownPosition = valid;
+                lastSeenVelocity = Vector3.zero;
+            }
         }
 
         UpdateAwareness();
@@ -396,7 +442,11 @@ public class MonsterAI : MonoBehaviour
 
         Vector3 direction = (target - origin).normalized;
 
-        if (Vector3.Angle(transform.forward, direction) > viewAngle * 0.5f)
+        // Colado nele e fora do cone ainda conta: ninguem passa a 2 m de um
+        // monstro sem ele perceber. A parede continua bloqueando.
+        bool veryClose = Vector3.Distance(origin, target) <= nearSenseRadius;
+
+        if (!veryClose && Vector3.Angle(transform.forward, direction) > viewAngle * 0.5f)
         {
             return false;
         }
@@ -506,7 +556,22 @@ public class MonsterAI : MonoBehaviour
 
             case MonsterState.Investigate:
 
-                if (stateTimer >= investigateTime)
+                // Ouviu de novo, em outro lugar: troca o alvo em vez de terminar
+                // a busca velha num lugar que ja nao interessa.
+                if (canHear && !canSee && Vector3.Distance(lastKnownPosition, currentTarget) > 3f)
+                {
+                    StartInvestigateTravel();
+                }
+
+                // Antes de chegar, o limite e o tempo de viagem; depois de
+                // chegar, e o tempo de procura. Contar tudo junto fazia ele
+                // desistir no meio do corredor.
+                if (!investigateArrived && stateTimer >= travelBudget)
+                {
+                    currentThought = "Longe demais. Deixa pra la.";
+                    EnterState(MonsterState.Patrol);
+                }
+                else if (investigateArrived && stateTimer >= investigateTime)
                 {
                     EnterState(MonsterState.Patrol);
                 }
@@ -524,7 +589,10 @@ public class MonsterAI : MonoBehaviour
                     break;
                 }
 
-                if (!canSee && timeSinceSeen > 3f)
+                // Sem ver e sem ouvir por um tempo, a caca vira busca. Enquanto
+                // ouve, continua indo atras do som - e o que impede o vai-e-vem
+                // Hunt/Investigate a cada quadro quando a certeza veio do ouvido.
+                if (!canSee && !canHear && timeSinceSeen > loseSightTime)
                 {
                     EnterState(ShouldAmbush() ? MonsterState.Ambush : MonsterState.Investigate);
                 }
@@ -553,9 +621,17 @@ public class MonsterAI : MonoBehaviour
     // dele com uma parede no meio e 20 m de caminho real.
     private bool ShouldAmbush()
     {
+        hasAmbushSpot = false;
+
         if (FindAmbushPoint() == null)
         {
-            return false;
+            // Sem pontos montados na cena: procura uma quina sozinho
+            if (!TryFindAmbushSpot(out ambushSpot))
+            {
+                return false;
+            }
+
+            hasAmbushSpot = true;
         }
 
         float chance = ambushChance;
@@ -623,8 +699,7 @@ public class MonsterAI : MonoBehaviour
             case MonsterState.Investigate:
                 currentThought = "Ouvi alguma coisa ali. Vou conferir.";
                 agent.speed = searchSpeed;
-                searchTimer = 0f;
-                SetDestination(lastKnownPosition);
+                StartInvestigateTravel();
                 PlayVoice(alertSounds);
                 break;
 
@@ -632,6 +707,14 @@ public class MonsterAI : MonoBehaviour
                 currentThought = "Achei ela. Vou atras.";
                 agent.speed = huntSpeed;
                 PlayVoice(spotSounds);
+
+                // Certeza que veio do ouvido: a pista e fresca agora, nao
+                // "desde a ultima vez que vi" (que pode ter sido nunca).
+                if (!canSee)
+                {
+                    timeSinceSeen = 0f;
+                }
+
                 break;
 
             case MonsterState.Ambush:
@@ -642,6 +725,10 @@ public class MonsterAI : MonoBehaviour
                 if (chosenAmbush != null)
                 {
                     SetDestination(chosenAmbush.position);
+                }
+                else if (hasAmbushSpot)
+                {
+                    SetDestination(ambushSpot);
                 }
 
                 break;
@@ -687,14 +774,14 @@ public class MonsterAI : MonoBehaviour
 
     private void ActPatrol()
     {
-        Resume();
-
-        if (!Arrived())
+        if (!Arrived() && !IsStuck())
         {
+            Resume();
             return;
         }
 
         Stop();
+        ScanAround();
         waitTimer += Time.deltaTime;
 
         if (waitTimer >= patrolWaitTime)
@@ -708,14 +795,24 @@ public class MonsterAI : MonoBehaviour
     // ele passa a checar pontos em volta, como alguem procurando de verdade.
     private void ActInvestigate()
     {
-        Resume();
-
-        if (!Arrived())
+        if (!Arrived() && !IsStuck())
         {
+            Resume();
             return;
         }
 
+        if (!investigateArrived)
+        {
+            // Primeira chegada: a partir daqui conta o tempo de procura, e
+            // monta a lista de lugares do mais provavel ao menos provavel.
+            investigateArrived = true;
+            stateTimer = 0f;
+            searchTimer = 0f;
+            BuildSearchPlan();
+        }
+
         Stop();
+        ScanAround();
         searchTimer += Time.deltaTime;
 
         if (searchTimer < searchInterval)
@@ -727,8 +824,15 @@ public class MonsterAI : MonoBehaviour
         currentThought = "Nao esta aqui. Vou olhar mais adiante.";
         PlayVoice(searchSounds);
 
-        // Sorteia um lugar por perto que exista de verdade na NavMesh
-        if (TryRandomNavPoint(lastKnownPosition, searchRadius, out Vector3 spot))
+        // Primeiro os lugares para onde ela provavelmente foi (rumo dela,
+        // atras da quina). So quando esgota e que sorteia em volta.
+        if (searchPlan.Count > 0)
+        {
+            Vector3 next = searchPlan[0];
+            searchPlan.RemoveAt(0);
+            SetDestination(next);
+        }
+        else if (TryRandomNavPoint(lastKnownPosition, searchRadius, out Vector3 spot))
         {
             SetDestination(spot);
         }
@@ -738,8 +842,15 @@ public class MonsterAI : MonoBehaviour
     {
         Resume();
 
-        Vector3 target = canSee ? InterceptPoint() : lastKnownPosition;
-        SetDestination(target);
+        // Vendo: mira adiante dela. Sem ver: continua no rumo em que ela
+        // sumiu, por alguns segundos, em vez de correr ate um ponto vazio.
+        Vector3 target = canSee ? InterceptPoint() : PredictedLostPosition();
+
+        if (destinationTimer >= 0.15f || Vector3.Distance(target, currentTarget) > 1.5f)
+        {
+            destinationTimer = 0f;
+            SetDestination(target);
+        }
 
         if (canSee && Vector3.Distance(transform.position, player.position) <= catchDistance)
         {
@@ -750,7 +861,7 @@ public class MonsterAI : MonoBehaviour
 
         currentThought = canSee
             ? (IsIntercepting() ? "Ela vai passar ali. Vou cortar caminho." : "Estou vendo ela. Nao vou parar.")
-            : "Ela virou ali. Ainda da pra alcancar.";
+            : (canHear ? "Estou ouvindo ela. Ta perto." : "Ela virou ali. Ainda da pra alcancar.");
     }
 
     // Mirar onde o jogador VAI ESTAR, nao onde ele esta.
@@ -781,13 +892,13 @@ public class MonsterAI : MonoBehaviour
     // Parado, calado, virado para onde ela provavelmente vai aparecer
     private void ActAmbush()
     {
-        if (chosenAmbush == null)
+        if (chosenAmbush == null && !hasAmbushSpot)
         {
             EnterState(MonsterState.Patrol);
             return;
         }
 
-        if (!Arrived())
+        if (!Arrived() && !IsStuck())
         {
             Resume();
             return;
@@ -824,8 +935,40 @@ public class MonsterAI : MonoBehaviour
         if (TrySnapToNavMesh(target, 3f, out Vector3 valid))
         {
             currentTarget = valid;
+            stuckTimer = 0f;
             agent.SetDestination(valid);
         }
+    }
+
+    // Da para chegar la ANDANDO? Um ponto num bolsao fechado por parede passa
+    // no SamplePosition e mesmo assim nao tem caminho: o agente iria ate a
+    // parede mais perto e ficaria la, parecendo burro.
+    private bool IsReachable(Vector3 target, out float pathLength)
+    {
+        pathLength = PathLengthTo(target);
+        return !float.IsPositiveInfinity(pathLength);
+    }
+
+    // Andando ha um tempo sem sair do lugar: caminho parcial, quina apertada,
+    // outro agente no meio. Melhor escolher outro destino do que insistir.
+    private bool IsStuck()
+    {
+        if (agent.isStopped || agent.pathPending)
+        {
+            stuckTimer = 0f;
+            return false;
+        }
+
+        if (agent.velocity.sqrMagnitude < 0.04f && agent.remainingDistance > arriveTolerance)
+        {
+            stuckTimer += Time.deltaTime;
+        }
+        else
+        {
+            stuckTimer = 0f;
+        }
+
+        return stuckTimer >= 2f;
     }
 
     private void Resume()
@@ -836,6 +979,26 @@ public class MonsterAI : MonoBehaviour
         }
 
         agent.updateRotation = true;
+        scanning = false;
+    }
+
+    // Parado, ele vira a cabeca de um lado para o outro. Sem isso o cone de
+    // visao fica cravado numa direcao e da para passar por tras dele.
+    private void ScanAround()
+    {
+        if (!scanning)
+        {
+            scanning = true;
+            scanBaseYaw = transform.eulerAngles.y;
+            scanTimer = 0f;
+        }
+
+        scanTimer += Time.deltaTime;
+        agent.updateRotation = false;
+
+        float yaw = scanBaseYaw + Mathf.Sin(scanTimer * scanSpeed) * scanAngle;
+        Quaternion wanted = Quaternion.Euler(0f, yaw, 0f);
+        transform.rotation = Quaternion.Slerp(transform.rotation, wanted, 4f * Time.deltaTime);
     }
 
     private void Stop()
@@ -940,6 +1103,184 @@ public class MonsterAI : MonoBehaviour
         transform.rotation = Quaternion.Slerp(transform.rotation, wanted, turnSpeedWhenStopped * Time.deltaTime);
     }
 
+    // Comeca (ou recomeca) a viagem ate o ultimo rastro. O orcamento de tempo
+    // vem do comprimento real do caminho, entao um rastro a 60 m ganha tempo
+    // de chegar, e um rastro inalcancavel e descartado na hora.
+    private void StartInvestigateTravel()
+    {
+        investigateArrived = false;
+        searchTimer = 0f;
+        stateTimer = 0f;
+        searchPlan.Clear();
+
+        if (!IsReachable(lastKnownPosition, out float length))
+        {
+            if (TryRandomNavPoint(lastKnownPosition, searchRadius, out Vector3 near) && IsReachable(near, out length))
+            {
+                lastKnownPosition = near;
+            }
+            else
+            {
+                travelBudget = 0f; // cai em Patrol no proximo Think
+                return;
+            }
+        }
+
+        float speed = Mathf.Max(agent.speed, 0.5f);
+        travelBudget = Mathf.Clamp(length / speed + 4f, 5f, 45f);
+        SetDestination(lastKnownPosition);
+    }
+
+    // Ela sumiu ha pouco: continua no rumo dela, limitado a alguns segundos.
+    // Depois disso a pista envelhece e volta a valer o ultimo ponto visto.
+    private Vector3 PredictedLostPosition()
+    {
+        float t = Mathf.Min(timeSinceSeen, lostPredictTime);
+        Vector3 predicted = lastKnownPosition + lastSeenVelocity * t;
+
+        if (TrySnapToNavMesh(predicted, 2f, out Vector3 valid) && IsReachable(valid, out _))
+        {
+            return valid;
+        }
+
+        return lastKnownPosition;
+    }
+
+    // Monta a lista de lugares para checar a partir de onde ela sumiu.
+    // Pontuacao: perto e melhor; no rumo em que ela ia e melhor; fora da
+    // minha linha de visao de quando ela sumiu (atras da quina) e MUITO
+    // melhor - se eu enxergasse o lugar, ela nao estaria la.
+    private void BuildSearchPlan()
+    {
+        searchPlan.Clear();
+
+        List<Vector3> candidates = new List<Vector3>();
+        List<float> scores = new List<float>();
+
+        Vector3 hint = lastSeenVelocity;
+        hint.y = 0f;
+        bool hasHint = hint.sqrMagnitude > 0.25f;
+        if (hasHint) hint.Normalize();
+
+        Vector3 eyes = lostSightPosition + Vector3.up * playerHeightOffset;
+
+        for (int i = 0; i < 18; i++)
+        {
+            float angle;
+
+            // Metade dos chutes segue o rumo dela, a outra metade cobre o resto
+            if (hasHint && i % 2 == 0)
+            {
+                angle = Mathf.Atan2(hint.x, hint.z) * Mathf.Rad2Deg + Random.Range(-60f, 60f);
+            }
+            else
+            {
+                angle = Random.Range(0f, 360f);
+            }
+
+            float radius = Random.Range(searchRadius * 0.35f, searchRadius);
+            Vector3 dir = Quaternion.Euler(0f, angle, 0f) * Vector3.forward;
+            Vector3 candidate = lastKnownPosition + dir * radius;
+
+            if (!TrySnapToNavMesh(candidate, 2.5f, out Vector3 valid)) continue;
+            if (!IsReachable(valid, out float length) || length > searchRadius * 3f) continue;
+
+            float score = length;
+
+            if (hasHint)
+            {
+                float alignment = Vector3.Dot(hint, (valid - lastKnownPosition).normalized);
+                score -= alignment * searchRadius * 0.6f;
+            }
+
+            bool hidden = Physics.Linecast(eyes, valid + Vector3.up * playerHeightOffset, obstacleMask);
+            if (hidden) score -= searchRadius;
+
+            candidates.Add(valid);
+            scores.Add(score);
+        }
+
+        // Do menor score (mais provavel) ao maior, sem dois vizinhos colados
+        while (candidates.Count > 0 && searchPlan.Count < 5)
+        {
+            int best = 0;
+            for (int i = 1; i < scores.Count; i++)
+            {
+                if (scores[i] < scores[best]) best = i;
+            }
+
+            Vector3 chosen = candidates[best];
+            candidates.RemoveAt(best);
+            scores.RemoveAt(best);
+
+            bool tooClose = false;
+            for (int i = 0; i < searchPlan.Count; i++)
+            {
+                if (Vector3.Distance(searchPlan[i], chosen) < 3f) { tooClose = true; break; }
+            }
+
+            if (!tooClose) searchPlan.Add(chosen);
+        }
+    }
+
+    // Sem ambushPoints na cena, ele procura sozinho uma quina: um lugar
+    // perto de onde ela vai passar, alcancavel, e que NAO se ve de la.
+    private bool TryFindAmbushSpot(out Vector3 spot)
+    {
+        Vector3 expected = lastKnownPosition + lastSeenVelocity * 2f;
+        if (!TrySnapToNavMesh(expected, 3f, out expected)) expected = lastKnownPosition;
+
+        Vector3 eyes = expected + Vector3.up * playerHeightOffset;
+        float bestScore = float.PositiveInfinity;
+        spot = transform.position;
+        bool found = false;
+
+        for (int i = 0; i < 16; i++)
+        {
+            Vector3 dir = Quaternion.Euler(0f, Random.Range(0f, 360f), 0f) * Vector3.forward;
+            Vector3 candidate = expected + dir * Random.Range(4f, 9f);
+
+            if (!TrySnapToNavMesh(candidate, 2.5f, out Vector3 valid)) continue;
+
+            // Precisa ser escondido de onde ela vem...
+            if (!Physics.Linecast(eyes, valid + Vector3.up * playerHeightOffset, obstacleMask)) continue;
+
+            // ...mas perto o bastante andando para ela passar por ali
+            float toExpected = PathLengthBetween(valid, expected);
+            if (float.IsPositiveInfinity(toExpected) || toExpected > 14f) continue;
+
+            if (!IsReachable(valid, out float fromMe)) continue;
+
+            float score = fromMe + toExpected * 0.5f;
+            if (score < bestScore)
+            {
+                bestScore = score;
+                spot = valid;
+                found = true;
+            }
+        }
+
+        return found;
+    }
+
+    // Comprimento do caminho entre dois pontos quaisquer da NavMesh.
+    private float PathLengthBetween(Vector3 from, Vector3 to)
+    {
+        if (!NavMesh.CalculatePath(from, to, NavMesh.AllAreas, scratchPath) ||
+            scratchPath.status != NavMeshPathStatus.PathComplete)
+        {
+            return float.PositiveInfinity;
+        }
+
+        float total = 0f;
+        Vector3[] corners = scratchPath.corners;
+        for (int i = 1; i < corners.Length; i++)
+        {
+            total += Vector3.Distance(corners[i - 1], corners[i]);
+        }
+        return total;
+    }
+
     // =========================================================
     // ESCOLHA DE DESTINO
     // =========================================================
@@ -951,7 +1292,11 @@ public class MonsterAI : MonoBehaviour
         // nada - e sem sortear pontos dentro de parede.
         if (patrolPoints == null || patrolPoints.Length == 0)
         {
-            if (TryRandomNavPoint(transform.position, patrolRadius, out Vector3 spot))
+            if (TryPickCoveragePoint(out Vector3 spot))
+            {
+                SetDestination(spot);
+            }
+            else if (TryRandomNavPoint(transform.position, patrolRadius, out spot))
             {
                 SetDestination(spot);
             }
@@ -965,6 +1310,62 @@ public class MonsterAI : MonoBehaviour
         {
             SetDestination(patrolPoints[patrolIndex].position);
         }
+    }
+
+    // Ronda que cobre terreno em vez de rodar em circulo: pontos longe o
+    // bastante, alcancaveis andando, longe do que ele ja visitou ha pouco.
+    // De vez em quando (instinctChance) o sorteio puxa para o lado onde o
+    // jogador esta - e o "faro" que impede a fase de morrer de tedio num
+    // mapa grande, sem entregar a posicao exata.
+    private bool TryPickCoveragePoint(out Vector3 result)
+    {
+        result = transform.position;
+        float bestScore = float.NegativeInfinity;
+        bool found = false;
+
+        bool instinct = Random.value < instinctChance;
+        Vector3 toPlayer = player.position - transform.position;
+        toPlayer.y = 0f;
+        float playerAngle = Mathf.Atan2(toPlayer.x, toPlayer.z) * Mathf.Rad2Deg;
+
+        for (int i = 0; i < 14; i++)
+        {
+            float angle = instinct
+                ? playerAngle + Random.Range(-50f, 50f)
+                : Random.Range(0f, 360f);
+
+            float radius = Random.Range(patrolMinRadius, patrolRadius);
+            Vector3 dir = Quaternion.Euler(0f, angle, 0f) * Vector3.forward;
+            Vector3 candidate = transform.position + dir * radius;
+
+            if (!TrySnapToNavMesh(candidate, 4f, out Vector3 valid)) continue;
+            if (!IsReachable(valid, out float length) || length > patrolRadius * 2f) continue;
+
+            // Quanto mais longe do que ja visitou, melhor
+            float novelty = float.PositiveInfinity;
+            for (int j = 0; j < recentPatrol.Count; j++)
+            {
+                novelty = Mathf.Min(novelty, Vector3.Distance(recentPatrol[j], valid));
+            }
+            if (float.IsPositiveInfinity(novelty)) novelty = patrolRadius;
+
+            float score = Mathf.Min(novelty, patrolRadius) - length * 0.25f;
+
+            if (score > bestScore)
+            {
+                bestScore = score;
+                result = valid;
+                found = true;
+            }
+        }
+
+        if (found)
+        {
+            recentPatrol.Add(result);
+            if (recentPatrol.Count > patrolMemory) recentPatrol.RemoveAt(0);
+        }
+
+        return found;
     }
 
     // O melhor lugar para emboscar e o mais perto do ultimo rastro do jogador,
@@ -1005,9 +1406,13 @@ public class MonsterAI : MonoBehaviour
         {
             Vector3 away = (transform.position - lastKnownPosition).normalized;
 
-            if (TryRandomNavPoint(transform.position + away * patrolRadius, patrolRadius * 0.5f, out Vector3 spot))
+            for (int i = 0; i < 6; i++)
             {
-                return spot;
+                if (TryRandomNavPoint(transform.position + away * patrolMinRadius, patrolMinRadius * 0.6f, out Vector3 spot)
+                    && IsReachable(spot, out _))
+                {
+                    return spot;
+                }
             }
 
             return transform.position;
@@ -1266,6 +1671,19 @@ public class MonsterAI : MonoBehaviour
 
         Gizmos.color = Color.magenta;
         Gizmos.DrawWireSphere(lastKnownPosition, 0.5f);
+
+        // Lugares que ele ainda vai checar nesta busca
+        Gizmos.color = new Color(1f, 0.5f, 0f);
+        for (int i = 0; i < searchPlan.Count; i++)
+        {
+            Gizmos.DrawWireSphere(searchPlan[i], 0.35f);
+        }
+
+        if (hasAmbushSpot)
+        {
+            Gizmos.color = Color.white;
+            Gizmos.DrawWireCube(ambushSpot, Vector3.one * 0.6f);
+        }
 
         // O caminho real que ele vai percorrer
         if (agent != null && agent.hasPath)

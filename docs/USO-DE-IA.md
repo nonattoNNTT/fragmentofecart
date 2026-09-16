@@ -226,3 +226,9 @@ KRLH funciona2/Assets/Art/Monstro/M_Monstro.mat                       (gerado pe
 docs/DIARIO.md · docs/USO-DE-IA.md                                    (entradas novas)
 ```
 
+**Segundo pedido (15h):** *"a IA ainda ta MUITO burra, melhora ela o MÁXIMO que conseguir"*.
+A IA reescreveu partes do `MonsterAI.cs` (ronda, busca, visão, emboscada, alcançabilidade) e
+mediu antes × depois em Play Mode. Tabela completa na entrada de 16/09 do `DIARIO.md`.
+O `MonsterAI.cs` **deixa de ser cópia sem alteração**: ~500 linhas foram adicionadas ou
+alteradas pela IA; o driver de teste usado na medição foi apagado antes do commit.
+

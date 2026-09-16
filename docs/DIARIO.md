@@ -7,6 +7,37 @@ fazer por causa disso.
 
 ## 16/09/2026 (quarta) — véspera do BETA
 
+### `MonsterAI` v2 — "a IA ainda tá MUITO burra, melhora o máximo que conseguir" (JP, 15h)
+
+Oito causas concretas, todas medidas no labirinto antes de mexer:
+
+| # | Burrice | Correção |
+|---|---|---|
+| 1 | `huntSpeed` 3,4 < Player andando (5): **nunca pegava ninguém** | 6,3 — pega quem anda, não pega quem corre (8); a stamina decide |
+| 2 | Ronda em círculo de 12 m num mapa de 240 m | Ronda por cobertura: 12–32 m, evita os 10 últimos pontos, 30 % de "faro" para o lado do Player |
+| 3 | Investigação desistia no meio do corredor (timer contava desde a decisão) | Orçamento de viagem pelo comprimento real do caminho; `investigateTime` conta da chegada |
+| 4 | Parado, cone fixo — dava para ficar do lado dele | Gira a cabeça ±75° quando parado; a 4 m "sente" mesmo fora do cone (parede ainda bloqueia) |
+| 5 | Perdeu de vista → ponto aleatório em 5 m | Extrapola o rumo por 1,5 s; depois plano de busca ranqueado: rumo dela, atrás da quina de onde perdeu, alcançável |
+| 6 | Ouvido só valia ao entrar em Investigate; ruído tremia o destino todo frame | Re-mira ao ouvir de novo; pista do ouvido atualiza a cada 0,5 s |
+| 7 | Aceitava destino em bolsão fechado e ficava na parede | Todo destino passa por `IsReachable` (caminho completo) + detector de travado (2 s) |
+| 8 | Emboscada nunca acontecia (precisava de pontos manuais) | Sem pontos, acha sozinho uma quina escondida de onde ela vem, a ≤ 14 m de caminho |
+
+Bug pré-existente corrigido de quebra: certeza vinda do **ouvido** fazia Hunt ↔ Investigate
+alternar a cada quadro (tocando som a cada troca). Agora enquanto ouve, continua caçando o som.
+
+**Medido em Play Mode com um driver de teste** (arquivo temporário, não commitado):
+
+| Teste | Antes | Depois |
+|---|---|---|
+| A · Player foge andando (5 m/s), visto | impossível pegar | pego em 2,3 s, grudado por 89 m |
+| B · Player corre 8 m/s por 9 quinas e para escondido | — | perdeu aos 8,3 s, reencontrou aos 9,0 s, pegou aos 11,2 s |
+| C · Ronda 90 s, Player a 166 m, sem Director | 10 células de 8 m · 32 m de alcance | ~29 células · 87 m de alcance |
+| D · Player parado a 8 m, 120° fora do cone | nunca visto | visto aos 3,9 s |
+
+Ajustes de calibragem ficam no Inspector do `Monstro` (todos `public` com `[Header]`).
+O `Corpo` (cubo) continua sendo só o filho; o Ursão entra no lugar dele sem mexer na IA.
+
+
 ### NavMesh completa na SampleScene + cubo do Monstro com `MonsterAI` (sessão nova, à tarde)
 
 **Pedido do JP:** pegar a última versão do GitHub, fazer a NavMesh completa na `SampleScene`
