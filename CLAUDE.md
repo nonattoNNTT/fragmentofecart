@@ -116,6 +116,12 @@ Consequência prática: **toda tarefa que acontece dentro da Unity vai para a Ju
 Letícia**. Para mexer em cena, escreva um Editor Script em `Assets/Editor/` com
 `[MenuItem]` e peça para uma delas clicar no menu.
 
+**Mas o resultado tem que ficar editável pela equipe (JP, 16/09/2026).** Editor Script
+serve para *gerar*, nunca para *ser* a coisa. O que fica no repositório é o jeito padrão
+da Unity: prefab, componente com valores no Inspector, `NavMeshSurface` com o botão Bake.
+Nada de menu que apaga e recria — isso destrói o ajuste que alguém fez à mão. Se o script
+gerador não é mais necessário depois de rodar, apague ele.
+
 ---
 
 ## 6. Escala — a causa de metade dos problemas atuais

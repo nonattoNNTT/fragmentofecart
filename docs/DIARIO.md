@@ -7,6 +7,33 @@ fazer por causa disso.
 
 ## 16/09/2026 (quarta) — véspera do BETA
 
+### Menu "Valentina" removido — tudo vira prefab e Inspector (JP, 16h20)
+
+JP: *"não é pra fazer por essas abas que é mais fácil pra VOCÊ. é pra fazer o que é mais
+fácil pra equipe em geral, não faça tudo por comando, e sim com que possamos alterar depois."*
+
+Ele está certo: o item "Criar cubo do Monstro" apagava e recriava o objeto, então qualquer
+ajuste feito no Inspector se perdia no clique seguinte. Feito:
+
+- **`Assets/Art/Monstro/Monstro.prefab`** — o Monstro agora é prefab (raiz com `NavMeshAgent`
+  + `MonsterAI` + `NavMeshModifier`, filho `Corpo`). A instância na `SampleScene` está
+  conectada a ele. Ajuste no prefab vale para qualquer cena; arrastar para outra cena é só
+  arrastar.
+- **`Assets/Editor/MontadorNavMesh.cs` apagado.** O menu `Valentina > NavMesh` não existe
+  mais. Nada se perdeu: o objeto `NavMesh` da cena tem o `NavMeshSurface` com o bake salvo.
+- Regra registrada na seção 5 do `CLAUDE.md`.
+
+**Como mexer daqui em diante (Julia/Letícia):**
+
+| Quer | Faz |
+|---|---|
+| Refazer a NavMesh depois de mover parede | Selecionar `NavMesh` na Hierarchy → Inspector → **Bake** |
+| Mudar velocidade, visão, ouvido do monstro | Selecionar `Monstro` → Inspector → campos com `[Header]`; **Overrides → Apply** se quiser que valha para o prefab |
+| Trocar o cubo pelo modelo do Ursão | Abrir o prefab, apagar `Corpo`, pôr o modelo como filho na posição (0, 0, 0) com o pé no chão |
+| Ver o que ele está pensando | Play → selecionar `Monstro` → `currentThought` e `stateHistory` no Inspector |
+| Pôr o monstro em outra cena | Arrastar `Monstro.prefab` para a cena; a cena precisa ter a própria `NavMeshSurface` bakeada |
+
+
 ### `MonsterAI` v2 — "a IA ainda tá MUITO burra, melhora o máximo que conseguir" (JP, 15h)
 
 Oito causas concretas, todas medidas no labirinto antes de mexer:
@@ -86,9 +113,9 @@ a raiz do Monstro é 1,1,1 e o cubo é filho. Quando o modelo do Ursão chegar, 
 `Corpo` — agente e IA ficam.
 
 **O que a Julia/Letícia precisam fazer:** nada para a NavMesh funcionar — está bakeada e
-salva na cena. Se mexerem nas paredes do labirinto, rodar **Valentina > NavMesh > 1** de
-novo (idempotente). Sons do monstro (`footstepClips`, `spotSounds` etc.) estão vazios —
-arrastar quando o JP entregar os `.wav`.
+salva na cena. Se mexerem nas paredes, selecionar `NavMesh` → **Bake** no Inspector
+(o menu `Valentina` foi removido às 16h20, ver entrada acima). Sons do monstro
+(`footstepClips`, `spotSounds` etc.) estão vazios — arrastar quando o JP entregar os `.wav`.
 
 
 ### Tentativa de contato direto com as outras máquinas — falhou

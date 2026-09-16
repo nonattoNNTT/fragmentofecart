@@ -232,3 +232,7 @@ mediu antes × depois em Play Mode. Tabela completa na entrada de 16/09 do `DIAR
 O `MonsterAI.cs` **deixa de ser cópia sem alteração**: ~500 linhas foram adicionadas ou
 alteradas pela IA; o driver de teste usado na medição foi apagado antes do commit.
 
+**Terceiro pedido (16h20):** JP rejeitou o menu `Valentina` ("não faça tudo por comando,
+e sim com que possamos alterar depois"). `MontadorNavMesh.cs` apagado; o Monstro virou
+`Assets/Art/Monstro/Monstro.prefab`; regra nova na seção 5 do `CLAUDE.md`.
+
