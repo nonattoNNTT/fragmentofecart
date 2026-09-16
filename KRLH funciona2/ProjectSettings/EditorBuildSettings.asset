@@ -6,19 +6,19 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
-    path: Assets/Manager/Scenes/Tela_inicial.unity
+    path: Assets/Scenes/Tela_inicial.unity
     guid: ebf734e8c1af4f4449ce093035f5bd47
   - enabled: 1
-    path: Assets/Manager/Scenes/Tela_1.unity
+    path: Assets/Scenes/Tela_1.unity
     guid: 99c9720ab356a0642a771bea13969a05
   - enabled: 1
-    path: Assets/Manager/Scenes/Tela_2.unity
+    path: Assets/Scenes/Tela_2.unity
     guid: c693f32f2cd527b4e823f2b5683569b9
   - enabled: 1
-    path: Assets/Manager/Scenes/Tela_1 1.unity
+    path: Assets/Scenes/Tela_1 1.unity
     guid: f25f2fbab7a87f34691daff1420c6812
   - enabled: 1
-    path: Assets/Manager/Scenes/aaa/SampleScene.unity
+    path: Assets/Scenes/SampleScene.unity
     guid: 2c189bfdce2b2c74c8431b56243d3bb8
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}
