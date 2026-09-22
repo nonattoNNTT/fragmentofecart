@@ -90,9 +90,16 @@ public class MonsterAI : MonoBehaviour
     public float playerHeightOffset = 1.2f;
 
     [Header("Visao")]
+    // Tres cones sobrepostos, como o xenomorfo de Alien: Isolation. O de
+    // longe e estreito, o do canto do olho e largo mas curto, e colado nele
+    // nao existe cone nenhum. Parede bloqueia os tres.
     public float viewDistance = 22f;
-    public float viewAngle = 110f;        // angulo total do cone, em graus
-    public float nearSenseRadius = 4f;    // tao perto que ele sente, mesmo fora do cone (parede ainda bloqueia)
+    public float viewAngle = 110f;        // angulo total do cone de frente, em graus
+    public float peripheralDistance = 10f; // canto do olho: perto, mas quase tudo em volta
+    public float peripheralAngle = 200f;
+    public float peripheralWeight = 0.45f; // ver de canto desconfia mais devagar que ver de frente
+    public float nearSenseRadius = 4f;    // tao perto que ele sente, mesmo por tras
+    public float darkViewMultiplier = 0.65f; // com a lanterna dela apagada ele enxerga menos
     public LayerMask obstacleMask;        // o que bloqueia a visao; vazio = tudo menos o jogador
 
     [Header("Audicao")]
@@ -101,6 +108,13 @@ public class MonsterAI : MonoBehaviour
     public float sneakingSpeed = 3f;      // abaixo disso e quase silencio (andar do Player = 5)
     public float hearingError = 3f;       // som entrega a regiao, nunca o ponto exato
     public float hearingUpdateInterval = 0.5f; // o ouvido atualiza a pista de tempos em tempos, nao todo quadro
+
+    [Header("Faro que aperta")]
+    // O truque do Mr. X (Resident Evil 2): quanto mais tempo sem achar ela,
+    // mais afiado ele fica. E o que impede o empate - ficar parado num canto
+    // funciona por um tempo, nunca para sempre.
+    public float frustrationTime = 40f;      // tempo sem nenhum sinal ate o faro estar no maximo
+    public float frustrationSenseBoost = 0.6f; // +60% de alcance de visao e ouvido no maximo
 
     [Header("Consciencia")]
     public float awarenessGain = 1.4f;    // por segundo, com o jogador bem visivel
@@ -136,6 +150,22 @@ public class MonsterAI : MonoBehaviour
     public float lostPredictTime = 1.5f;  // quantos segundos ele extrapola o rumo de quem sumiu
     public float catchDistance = 1.8f;
 
+    [Header("Memoria - o mapa de onde ela pode estar")]
+    // Ele guarda uma grade de "chance de ela estar aqui", difunde com o tempo
+    // e zera o que olha. Ver OccupancyMap.cs. Ligue o gizmo e selecione o
+    // Monstro no Play para ver a cabeca dele funcionando na Scene.
+    public bool memoryEnabled = true;
+    public float memoryCellSize = 4f;        // tamanho da celula, em metros
+    public float memoryUpdateInterval = 0.2f;
+    public float memoryDiffusion = 0.45f;    // o quanto a certeza escorre para as vizinhas a cada passo
+    public float memoryDrift = 1.4f;         // o quanto a duvida segue o rumo em que ela sumiu
+    public float memoryDistancePenalty = 0.004f; // desconto por metro ao escolher onde olhar
+    public float memoryGiveUpConfidence = 0.08f; // abaixo disso ele aceita que perdeu
+    public float searchMinTime = 10f;        // antes disso ele nao aceita ter perdido
+    public float searchGiveUpTime = 45f;     // depois disso a pista esfriou de vez
+    public float searchSpreadSpeed = 3.5f;   // m/s que ele supoe que ela andou, ao reabrir a busca
+    public bool showMemoryGizmo = true;
+
     [Header("Olhar em volta - quando parado")]
     public float scanAngle = 75f;         // graus para cada lado
     public float scanSpeed = 1.1f;        // velocidade do vai-e-vem (rad/s)
@@ -148,7 +178,15 @@ public class MonsterAI : MonoBehaviour
     public float interceptMinSpeed = 4f;     // so vale a pena se voce estiver andando rapido
 
     [Header("Ritmo do medo")]
-    public float maxHuntTime = 25f;       // cacar mais que isso cansa o jogador
+    // "Menace" e a pressao que ELE ja colocou em VOCE - sobe rapido quando
+    // esta perto e te vendo, devagar quando esta longe. Recuar por pressao
+    // acumulada, e nao por cronometro, e o que faz a perseguicao curta e
+    // colada valer tanto quanto a longa e distante. Ideia do medidor de
+    // ameaca de Alien: Isolation.
+    public float menaceLimit = 20f;       // pressao acumulada que dispara o recuo
+    public float menaceNearBonus = 2f;    // quanto a proximidade multiplica a pressao
+    public float menaceDecay = 1.2f;      // por segundo, longe dela
+    public float maxHuntTime = 25f;       // teto duro: cacar mais que isso cansa o jogador
     public float retreatTime = 8f;
     public float ambushTime = 12f;
     public float ambushChance = 0.45f;    // chance base de esperar ao inves de procurar
@@ -208,6 +246,9 @@ public class MonsterAI : MonoBehaviour
 
     [Header("O que ele esta pensando - so leitura")]
     public string currentThought = "...";
+    public float menace;                  // pressao que ele ja colocou no jogador
+    public float frustration;             // 0 a 1; em 1 os sentidos estao no maximo
+    public float memoryConfidence;        // o quanto ele ainda acredita saber onde ela esta
     public string stateHistory = "";      // ultimas trocas de estado, com o tempo (mais recente primeiro)
     public MonsterState state = MonsterState.Patrol;
     public float awareness;
@@ -242,6 +283,9 @@ public class MonsterAI : MonoBehaviour
     private readonly List<Vector3> recentPatrol = new List<Vector3>();
     private float destinationTimer;
     private float stuckTimer;
+    private float memoryTimer;
+    private bool sawInFocus;              // viu de frente ou so pelo canto do olho?
+    private readonly OccupancyMap memory = new OccupancyMap();
     private bool scanning;
     private float scanBaseYaw;
     private float scanTimer;
@@ -276,6 +320,7 @@ public class MonsterAI : MonoBehaviour
 
         currentTarget = transform.position;
 
+        BuildMemory();
         SetupAudio();
         ScheduleNextRandomSound();
 
@@ -349,6 +394,7 @@ public class MonsterAI : MonoBehaviour
         destinationTimer += Time.deltaTime;
 
         Sense();
+        UpdateMemory();
         Think();
         Act();
         UpdateAudio();
@@ -385,6 +431,10 @@ public class MonsterAI : MonoBehaviour
             lastKnownPosition = player.position;
             lastSeenVelocity = playerVelocity;
             timeSinceSeen = 0f;
+
+            // Vi: toda a certeza vai para onde ela esta, e o faro relaxa
+            memory.SetKnown(player.position);
+            frustration = 0f;
         }
         else if (couldSee)
         {
@@ -407,7 +457,16 @@ public class MonsterAI : MonoBehaviour
             {
                 lastKnownPosition = valid;
                 lastSeenVelocity = Vector3.zero;
+
+                // Som nao entrega o ponto: espalha a certeza pela regiao
+                memory.AddNoise(valid, hearingError * 1.5f, 0.6f);
             }
+        }
+
+        // Sem nenhum sinal, o faro vai apertando (ver frustrationTime)
+        if (!canSee && !canHear)
+        {
+            frustration = Mathf.Clamp01(frustration + Time.deltaTime / Mathf.Max(1f, frustrationTime));
         }
 
         UpdateAwareness();
@@ -435,27 +494,57 @@ public class MonsterAI : MonoBehaviour
 
     private bool CanSeePlayer()
     {
+        sawInFocus = false;
+
         Vector3 target = player.position + Vector3.up * playerHeightOffset;
         Vector3 origin = transform.position + Vector3.up * playerHeightOffset;
 
-        if (Vector3.Distance(origin, target) > viewDistance)
+        float distance = Vector3.Distance(origin, target);
+
+        if (distance > EffectiveViewDistance())
         {
             return false;
         }
 
         Vector3 direction = (target - origin).normalized;
+        float angle = Vector3.Angle(transform.forward, direction);
 
-        // Colado nele e fora do cone ainda conta: ninguem passa a 2 m de um
-        // monstro sem ele perceber. A parede continua bloqueando.
-        bool veryClose = Vector3.Distance(origin, target) <= nearSenseRadius;
+        bool inFocus = angle <= viewAngle * 0.5f;
+        bool inPeripheral = distance <= peripheralDistance && angle <= peripheralAngle * 0.5f;
+        bool veryClose = distance <= nearSenseRadius;
 
-        if (!veryClose && Vector3.Angle(transform.forward, direction) > viewAngle * 0.5f)
+        if (!inFocus && !inPeripheral && !veryClose)
         {
             return false;
         }
 
         // Tem parede no meio?
-        return !Physics.Linecast(origin, target, obstacleMask);
+        if (Physics.Linecast(origin, target, obstacleMask))
+        {
+            return false;
+        }
+
+        sawInFocus = inFocus || veryClose;
+        return true;
+    }
+
+    // Alcance da visao depois do escuro e do faro. A lanterna dela apagada
+    // esconde de verdade; ficar sumido tempo demais deixa de esconder.
+    private float EffectiveViewDistance()
+    {
+        float reach = viewDistance * (1f + frustration * frustrationSenseBoost);
+
+        if (flashlight != null && !flashlight.gameObject.activeInHierarchy)
+        {
+            reach *= Mathf.Clamp(darkViewMultiplier, 0.1f, 1f);
+        }
+
+        return reach;
+    }
+
+    private float EffectiveHearingRadius()
+    {
+        return hearingRadius * (1f + frustration * frustrationSenseBoost);
     }
 
     // A audicao atravessa parede de proposito: e som. E justo porque so
@@ -464,17 +553,19 @@ public class MonsterAI : MonoBehaviour
     {
         float noiseRadius;
 
+        float reach = EffectiveHearingRadius();
+
         if (playerSpeed >= runningSpeed)
         {
-            noiseRadius = hearingRadius;
+            noiseRadius = reach;
         }
         else if (playerSpeed >= sneakingSpeed)
         {
-            noiseRadius = hearingRadius * 0.5f;
+            noiseRadius = reach * 0.5f;
         }
         else
         {
-            noiseRadius = hearingRadius * 0.15f;
+            noiseRadius = reach * 0.15f;
         }
 
         return Vector3.Distance(transform.position, player.position) <= noiseRadius;
@@ -489,6 +580,12 @@ public class MonsterAI : MonoBehaviour
             // Perto e no centro do cone sobe mais rapido que longe e na borda
             float distance = Vector3.Distance(transform.position, player.position);
             gain = awarenessGain * (0.35f + (1f - Mathf.Clamp01(distance / viewDistance)));
+
+            // Visto so pelo canto do olho: desconfia, mas demora a ter certeza
+            if (!sawInFocus)
+            {
+                gain *= Mathf.Clamp01(peripheralWeight);
+            }
 
             if (IsLitByFlashlight())
             {
@@ -519,12 +616,85 @@ public class MonsterAI : MonoBehaviour
     }
 
     // =========================================================
+    // MEMORIA - o mapa de onde ela pode estar
+    // =========================================================
+
+    // Monta a grade uma vez, em cima da NavMesh que ja existe na cena.
+    // Sem bake nao ha grade: ele volta a se virar com o metodo antigo em
+    // vez de quebrar.
+    private void BuildMemory()
+    {
+        if (!memoryEnabled)
+        {
+            return;
+        }
+
+        NavMeshTriangulation triangulation = NavMesh.CalculateTriangulation();
+
+        if (triangulation.vertices == null || triangulation.vertices.Length == 0)
+        {
+            Debug.LogWarning("MonsterAI: sem NavMesh bakeada, o mapa de memoria nao foi montado. " +
+                             "Selecione o objeto NavMesh na cena e clique em Bake.", this);
+            return;
+        }
+
+        Bounds bounds = new Bounds(triangulation.vertices[0], Vector3.zero);
+
+        for (int i = 1; i < triangulation.vertices.Length; i++)
+        {
+            bounds.Encapsulate(triangulation.vertices[i]);
+        }
+
+        bounds.Expand(memoryCellSize * 2f);
+        memory.Build(bounds, memoryCellSize, memoryCellSize * 0.75f);
+    }
+
+    // Difunde a certeza e apaga o que ele esta vendo agora. Roda algumas
+    // vezes por segundo, nao todo quadro: e barato e ninguem percebe.
+    private void UpdateMemory()
+    {
+        if (!memory.IsBuilt)
+        {
+            return;
+        }
+
+        memoryTimer += Time.deltaTime;
+
+        if (memoryTimer < memoryUpdateInterval)
+        {
+            return;
+        }
+
+        memoryTimer = 0f;
+
+        // A duvida escorre no rumo em que ela sumiu, nao em circulo
+        memory.Diffuse(memoryDiffusion, lastSeenVelocity, memoryDrift);
+
+        memory.ClearVisible(
+            transform.position + Vector3.up * playerHeightOffset,
+            transform.forward,
+            EffectiveViewDistance(),
+            viewAngle * 0.5f,
+            playerHeightOffset,
+            obstacleMask,
+            nearSenseRadius);
+
+        memoryConfidence = memory.Confidence;
+    }
+
+    // =========================================================
     // THINK - o que isso significa, e para onde eu vou
     // =========================================================
 
     private void Think()
     {
         RunDirector();
+
+        // Longe e sem cacar, a pressao acumulada esfria sozinha
+        if (state != MonsterState.Hunt)
+        {
+            menace = Mathf.Max(0f, menace - menaceDecay * Time.deltaTime);
+        }
 
         // Recuo e sagrado: ele nao volta a cacar antes da hora.
         // E o respiro do jogador, e nada interrompe.
@@ -533,6 +703,7 @@ public class MonsterAI : MonoBehaviour
             if (stateTimer >= retreatTime)
             {
                 huntFatigue = 0f;
+                menace = 0f;
                 awareness = 0f;
                 EnterState(MonsterState.Patrol);
             }
@@ -569,14 +740,34 @@ public class MonsterAI : MonoBehaviour
                 // Antes de chegar, o limite e o tempo de viagem; depois de
                 // chegar, e o tempo de procura. Contar tudo junto fazia ele
                 // desistir no meio do corredor.
-                if (!investigateArrived && stateTimer >= travelBudget)
+                // Varreu tudo que achava possivel e nao tinha ninguem.
+                // Enquanto a pista for recente, isso nao quer dizer que ela
+                // sumiu - quer dizer que ela foi mais longe do que ele achava.
+                if (investigateArrived && memory.IsBuilt && memory.Confidence < memoryGiveUpConfidence)
+                {
+                    if (timeSinceSeen < searchGiveUpTime)
+                    {
+                        ReseedSearch();
+                    }
+                    else if (stateTimer >= searchMinTime)
+                    {
+                        currentThought = "Procurei em tudo. Ela me perdeu.";
+                        EnterState(MonsterState.Patrol);
+                    }
+                }
+                else if (!investigateArrived && stateTimer >= travelBudget)
                 {
                     currentThought = "Longe demais. Deixa pra la.";
                     EnterState(MonsterState.Patrol);
                 }
                 else if (investigateArrived && stateTimer >= investigateTime)
                 {
-                    EnterState(MonsterState.Patrol);
+                    // Com o mapa, quem encerra a busca e a pista esfriar, nao o
+                    // cronometro: enquanto ele ainda tem em que acreditar, procura.
+                    if (!memory.IsBuilt || timeSinceSeen >= searchGiveUpTime)
+                    {
+                        EnterState(MonsterState.Patrol);
+                    }
                 }
 
                 break;
@@ -585,8 +776,14 @@ public class MonsterAI : MonoBehaviour
 
                 huntFatigue += Time.deltaTime;
 
-                // Cacar demais cansa o jogador e o susto perde a forca
-                if (huntFatigue >= maxHuntTime)
+                // Pressao: colado e vendo pesa muito mais que longe e no escuro
+                float nearness = 1f - Mathf.Clamp01(
+                    Vector3.Distance(transform.position, player.position) / Mathf.Max(1f, viewDistance));
+                menace += Time.deltaTime * (1f + nearness * menaceNearBonus) * (canSee ? 1f : 0.4f);
+
+                // Ja assustou o bastante, ou cacou tempo demais: da o respiro.
+                // Terror sem pausa vira ruido - o susto precisa do vale antes.
+                if (menace >= menaceLimit || huntFatigue >= maxHuntTime)
                 {
                     EnterState(MonsterState.Retreat);
                     break;
@@ -680,11 +877,21 @@ public class MonsterAI : MonoBehaviour
         Vector3 rumor = player.position + new Vector3(error.x, 0f, error.y);
 
         // A dica so vale se cair num lugar onde da pra andar
-        if (TrySnapToNavMesh(rumor, rumorError, out Vector3 valid))
+        if (!TrySnapToNavMesh(rumor, rumorError, out Vector3 valid))
         {
-            lastKnownPosition = valid;
-            EnterState(MonsterState.Investigate);
+            return;
         }
+
+        // A dica entra como REGIAO no mapa, nunca como ponto: ele passa a
+        // acreditar que ela anda por ali e vai varrer aquilo. Se a dica for
+        // errada, o proprio mapa desmente ele quando ele chega e nao acha.
+        if (memory.IsBuilt)
+        {
+            memory.AddNoise(valid, rumorError, 0.5f);
+        }
+
+        lastKnownPosition = valid;
+        EnterState(MonsterState.Investigate);
     }
 
     private void EnterState(MonsterState next)
@@ -838,6 +1045,18 @@ public class MonsterAI : MonoBehaviour
             Vector3 next = searchPlan[0];
             searchPlan.RemoveAt(0);
             SetDestination(next);
+        }
+        else if (memory.IsBuilt && memory.Confidence > memoryGiveUpConfidence)
+        {
+            // Esgotou a lista: pergunta ao mapa de novo, que ja mudou
+            BuildSearchPlan();
+
+            if (searchPlan.Count > 0)
+            {
+                Vector3 next = searchPlan[0];
+                searchPlan.RemoveAt(0);
+                SetDestination(next);
+            }
         }
         else if (TryRandomNavPoint(lastKnownPosition, searchRadius, out Vector3 spot))
         {
@@ -1110,6 +1329,28 @@ public class MonsterAI : MonoBehaviour
         transform.rotation = Quaternion.Slerp(transform.rotation, wanted, turnSpeedWhenStopped * Time.deltaTime);
     }
 
+    // Ela nao evaporou: alarga a busca para o raio que ela ja teria alcancado
+    // andando, e recomeca. O miolo fica de fora porque o miolo ele ja viu.
+    private void ReseedSearch()
+    {
+        float reach = Mathf.Clamp(timeSinceSeen * searchSpreadSpeed, searchRadius, 45f);
+
+        memory.AddRing(lastKnownPosition, reach * 0.55f, reach, 1f);
+        memoryConfidence = memory.Confidence;
+
+        searchPlan.Clear();
+        BuildSearchPlan();
+
+        currentThought = "Ela ja deve estar mais longe. Vou abrir a busca.";
+
+        if (searchPlan.Count > 0)
+        {
+            Vector3 next = searchPlan[0];
+            searchPlan.RemoveAt(0);
+            SetDestination(next);
+        }
+    }
+
     // Comeca (ou recomeca) a viagem ate o ultimo rastro. O orcamento de tempo
     // vem do comprimento real do caminho, entao um rastro a 60 m ganha tempo
     // de chegar, e um rastro inalcancavel e descartado na hora.
@@ -1160,6 +1401,29 @@ public class MonsterAI : MonoBehaviour
     private void BuildSearchPlan()
     {
         searchPlan.Clear();
+
+        // Com o mapa montado, os lugares saem dele: as celulas em que ele
+        // ainda acredita, descontada a distancia. O resultado e uma varredura
+        // que segue o corredor em vez de pular de ponto sorteado em ponto
+        // sorteado - e ele nunca volta para onde acabou de olhar, porque
+        // olhar zera a celula.
+        if (memory.IsBuilt && memory.Confidence > memoryGiveUpConfidence)
+        {
+            memory.GetBestCandidates(transform.position, 6, memoryDistancePenalty, searchPlan);
+
+            for (int i = searchPlan.Count - 1; i >= 0; i--)
+            {
+                if (!IsReachable(searchPlan[i], out _))
+                {
+                    searchPlan.RemoveAt(i);
+                }
+            }
+
+            if (searchPlan.Count > 0)
+            {
+                return;
+            }
+        }
 
         List<Vector3> candidates = new List<Vector3>();
         List<float> scores = new List<float>();
@@ -1676,9 +1940,22 @@ public class MonsterAI : MonoBehaviour
         Gizmos.color = Color.cyan;
         Gizmos.DrawWireSphere(transform.position, hearingRadius);
 
+        // Canto do olho: curto, mas quase tudo em volta
+        Gizmos.color = new Color(1f, 1f, 1f, 0.25f);
+        Vector3 pLeft = Quaternion.Euler(0f, -peripheralAngle * 0.5f, 0f) * transform.forward;
+        Vector3 pRight = Quaternion.Euler(0f, peripheralAngle * 0.5f, 0f) * transform.forward;
+        Gizmos.DrawRay(eyes, pLeft * peripheralDistance);
+        Gizmos.DrawRay(eyes, pRight * peripheralDistance);
+
         if (!Application.isPlaying)
         {
             return;
+        }
+
+        // O mapa de memoria: laranja onde ele acha que ela esta
+        if (showMemoryGizmo)
+        {
+            memory.DrawGizmos(0.55f);
         }
 
         Gizmos.color = Color.magenta;

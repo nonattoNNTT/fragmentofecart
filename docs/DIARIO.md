@@ -5,6 +5,67 @@ fazer por causa disso.
 
 ---
 
+## 22/09/2026 (terça) — 4 dias para a FECART
+
+### `MonsterAI` v3 — ele agora tem um mapa mental de onde você pode estar
+
+JP: *"melhora ainda mais a IA, procura formas e pesquisa sobre outras IAs perseguidoras
+que pode servir de base."* Pesquisadas três referências e trazido o que dá para medir:
+
+| Referência | O que foi copiado |
+|---|---|
+| **Alien: Isolation** (Creative Assembly) | cones de visão sobrepostos · medidor de ameaça (*menace gauge*) para dosar o recuo · busca em anel (*donut search*) ao reabrir a procura |
+| **Halo 3 / Third Eye Crime** (Damián Isla) | **occupancy map** — a crença do monstro sobre onde você está, difundida pela NavMesh |
+| **Resident Evil 2 remake** (Mr. X) | os sentidos apertam quanto mais tempo ele passa sem te achar |
+
+**O que entrou:**
+
+- **`OccupancyMap.cs`** (arquivo novo) — grade de 4 m sobre a NavMesh, 3.534 células
+  andáveis no labirinto. Ver ela = toda a certeza numa célula; o tempo passar = a certeza
+  escorre para as vizinhas **andáveis** (não atravessa parede); olhar para um canto = aquele
+  canto zera. A busca varre corredor, segue porta e **nunca volta para onde ele acabou de
+  olhar** — sem nenhuma regra dizendo isso, é o que emerge das três operações.
+- **Difusão direcional** — a dúvida escorre para o lado em que ela sumiu, não em círculo.
+- **Busca em anel** — varreu tudo e não achou? Enquanto a pista for recente ele conclui
+  "ela foi mais longe do que eu achava" e semeia um anel no raio que ela já teria alcançado.
+  Antes disso ele desistia em 6 s.
+- **Quem encerra a busca é a pista esfriar** (`searchGiveUpTime`, 45 s), não um cronômetro.
+- **Três cones de visão** — frente (22 m/110°), canto do olho (10 m/200°, desconfia mais
+  devagar) e colado (4 m, por trás inclusive).
+- **Escuro conta**: com a lanterna dela apagada o alcance dele cai 35 %.
+- **Medidor de ameaça** no lugar do cronômetro de caçada: recuar depende da **pressão que
+  ele já colocou em você** (perto e te vendo pesa 3x mais que longe), não do relógio.
+- **Faro que aperta**: 40 s sem nenhum sinal e visão/audição ganham +60 % de alcance.
+
+**Medido em Play Mode**, mesmo cenário nos dois: ela é vista, corre 79 m em sprint pelo
+labirinto e se esconde.
+
+| | com o mapa | sem o mapa (v2) |
+|---|---|---|
+| Chegou a que distância dela | **12,7 m** | 32,1 m |
+| Tempo procurando | **41 s** | 16 s |
+| Distância andada | 214 m | 208 m |
+
+Com tudo ligado (Director + emboscada), no mesmo cenário, ele **achou ela** (0,0 m) em 15 s.
+
+**Custo: 0,025 ms por passo do mapa, 0,13 ms por segundo de jogo.** Não encosta nos 40 fps.
+
+**Fontes consultadas** (para a Declaração de Uso de IA):
+- *Revisiting the AI of Alien: Isolation* — Tommy Thompson, AI and Games
+  https://www.aiandgames.com/p/revisiting-alien-isolation
+- *The Perfect Organism: The AI of Alien: Isolation* — Game Developer
+  https://www.gamedeveloper.com/design/the-perfect-organism-the-ai-of-alien-isolation
+- *Third Eye Crime: Building a Stealth Game Around Occupancy Maps* — Damián Isla (AIIDE)
+  https://cdn.aaai.org/ojs/12663/12663-52-16180-1-2-20201228.pdf
+- *Resident Evil 2 director talks Mr. X's AI* — PC Gamer
+  https://www.pcgamer.com/resident-evil-2s-director-talks-mr-xs-ai-scary-footsteps-and-the-dmx-mod/
+
+**Como a equipe mexe nisso (Julia/Letícia):** tudo é campo do Inspector no
+`Assets/Art/Monstro/Monstro.prefab`, agrupado em `[Header]`. Para **ver** a cabeça dele:
+Play → selecionar `Monstro` → os quadrados laranja na Scene são onde ele acha que você
+está. Desligar em `showMemoryGizmo`; desligar o sistema todo em `memoryEnabled` (ele volta
+para a busca da v2 sem quebrar nada).
+
 ## 16/09/2026 (quarta) — véspera do BETA
 
 ### Menu "Valentina" removido — tudo vira prefab e Inspector (JP, 16h20)

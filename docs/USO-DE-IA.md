@@ -236,3 +236,10 @@ alteradas pela IA; o driver de teste usado na medição foi apagado antes do com
 e sim com que possamos alterar depois"). `MontadorNavMesh.cs` apagado; o Monstro virou
 `Assets/Art/Monstro/Monstro.prefab`; regra nova na seção 5 do `CLAUDE.md`.
 
+**Quarto pedido (22/09/2026):** *"eu preciso que você melhore ainda mais a IA, procura
+formas e pesquisa sobre outras IAs perseguidoras que pode servir de base."* A IA pesquisou
+na web as referências (Alien: Isolation, occupancy maps de Damián Isla, Mr. X do RE2),
+escreveu `Assets/Scripts/Monstro/OccupancyMap.cs` (novo) e reescreveu partes do
+`MonsterAI.cs`, medindo antes × depois em Play Mode. Detalhes na entrada de 22/09 do
+`DIARIO.md`. Fontes citadas lá.
+
