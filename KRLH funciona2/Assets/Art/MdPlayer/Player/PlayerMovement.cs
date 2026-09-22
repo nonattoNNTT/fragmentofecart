@@ -15,8 +15,13 @@ public class PlayerMovement : MonoBehaviour
     [Header("Cooldown")]
     public float staminaCooldownDuration = 5f;
 
+    [Header("Animação")]
+    [Tooltip("Suaviza a troca entre parado, andando e correndo. 0 troca seco.")]
+    public float suavizacaoAnimacao = 0.1f;
+
     [Header("References")]
     public Transform cameraTransform;
+    public Animator animator;
 
     private CharacterController controller;
 
@@ -38,6 +43,13 @@ public class PlayerMovement : MonoBehaviour
         controller = GetComponent<CharacterController>();
 
         currentStamina = maxStamina;
+
+        // Se o Animator não foi colocado no Inspector,
+        // tenta encontrar automaticamente no Player ou nos filhos.
+        if (animator == null)
+        {
+            animator = GetComponentInChildren<Animator>();
+        }
     }
 
     private void Update()
@@ -45,6 +57,7 @@ public class PlayerMovement : MonoBehaviour
         UpdateStamina();
         UpdateCooldown();
         Move();
+        UpdateAnimation();
     }
 
     // =========================
@@ -110,6 +123,29 @@ public class PlayerMovement : MonoBehaviour
 
         controller.Move(
             velocity * Time.deltaTime
+        );
+    }
+
+    // =========================
+    // ANIMATION
+    // =========================
+
+    private void UpdateAnimation()
+    {
+        if (animator == null)
+            return;
+
+        // 0 = parado · até 0,5 = andando · 1 = correndo.
+        // É esse número que faz o Animator escolher idle, walk ou run.
+        float velocidade =
+            moveInput.magnitude *
+            (IsSprinting() ? 1f : 0.5f);
+
+        animator.SetFloat(
+            "Speed",
+            velocidade,
+            suavizacaoAnimacao,
+            Time.deltaTime
         );
     }
 

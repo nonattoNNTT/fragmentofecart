@@ -28,6 +28,10 @@ public class CameraController : MonoBehaviour
     public float cameraReturnSpeed = 0.08f;
     public LayerMask collisionLayers;
 
+    [Header("Cinemática")]
+    [Tooltip("Desligado enquanto o trilho da câmera roda. Quem liga e desliga é o CameraRail.")]
+    public bool controleAtivo = true;
+
     private Vector2 lookInput;
 
     private float verticalRotation = 0f;
@@ -41,19 +45,22 @@ public class CameraController : MonoBehaviour
     {
         currentCameraDistance = cameraDistance;
 
-        SetCamera(true);
-
-        Cursor.lockState = CursorLockMode.Locked;
-        Cursor.visible = false;
+        AplicarEstado();
     }
 
     private void Update()
     {
+        if (!controleAtivo)
+            return;
+
         RotateCamera();
     }
 
     private void LateUpdate()
     {
+        if (!controleAtivo)
+            return;
+
         UpdateThirdPersonCamera();
     }
 
@@ -117,43 +124,87 @@ public class CameraController : MonoBehaviour
         if (firstPerson)
             return;
 
+        if (cameraPivot == null || thirdPersonCamera == null)
+            return;
+
+        // Os valores do Inspector valem para o Player em escala 1.
+        // Sem isto a câmera fica dentro da Valentina quando a escala sobe.
+        float escala = Mathf.Max(
+            transform.lossyScale.x,
+            transform.lossyScale.z
+        );
+
+        float distanciaMax = cameraDistance * escala;
+        float raioColisao = collisionRadius * escala;
+        float folgaColisao = collisionOffset * escala;
+        float distanciaMin = 0.15f * escala;
+
         Vector3 pivotPosition =
             cameraPivot.position +
-            Vector3.up * cameraHeight;
+            Vector3.up * cameraHeight * escala;
+
+        Vector3 shoulderPosition =
+            cameraPivot.right * shoulderOffset * escala;
+
+        // A câmera sai do ponto que já inclui o ombro, e o teste de parede
+        // sai do mesmo ponto. Antes o teste saía do pivô e a câmera ia para
+        // outro lugar, então ela parava num ponto que ninguém tinha conferido.
+        Vector3 origem = pivotPosition + shoulderPosition;
 
         Vector3 direction =
             -cameraPivot.forward.normalized;
 
-        float targetDistance = cameraDistance;
+        float targetDistance = distanciaMax;
 
-        // Detecta paredes e obstáculos
-        if (Physics.SphereCast(
-            pivotPosition,
-            collisionRadius,
+        // Detecta paredes e obstáculos.
+        // É SphereCastAll porque o teste começa dentro da própria cápsula do
+        // Player: um SphereCast comum acertava o próprio Player e devolvia
+        // distância 0, o que grudava a câmera dentro da cabeça dela.
+        RaycastHit[] batidas = Physics.SphereCastAll(
+            origem,
+            raioColisao,
             direction,
-            out RaycastHit hit,
-            cameraDistance,
+            distanciaMax,
             collisionLayers,
-            QueryTriggerInteraction.Ignore))
+            QueryTriggerInteraction.Ignore
+        );
+
+        float maisPerto = distanciaMax;
+
+        foreach (RaycastHit hit in batidas)
         {
-            targetDistance = hit.distance - collisionOffset;
+            // Ignora o próprio Player e tudo que é filho dele
+            if (hit.transform.IsChildOf(transform))
+                continue;
 
+            // distância 0 = o cast já nasceu dentro desse collider.
+            // Acontece com o Teto, porque a Valentina é alta para o quarto.
+            // Esse valor não mede nada, e usá-lo grudava a câmera no mínimo.
+            if (hit.distance <= 0.001f)
+                continue;
+
+            if (hit.distance < maisPerto)
+            {
+                maisPerto = hit.distance;
+            }
+        }
+
+        if (maisPerto < distanciaMax)
+        {
             targetDistance = Mathf.Clamp(
-                targetDistance,
-                0.15f,
-                cameraDistance
+                maisPerto - folgaColisao,
+                distanciaMin,
+                distanciaMax
             );
 
-            currentCameraDistance = Mathf.Min(
-                currentCameraDistance,
-                targetDistance
-            );
+            // Aproxima na hora, para não atravessar a parede
+            currentCameraDistance = targetDistance;
         }
         else
         {
             currentCameraDistance = Mathf.SmoothDamp(
                 currentCameraDistance,
-                cameraDistance,
+                distanciaMax,
                 ref cameraDistanceVelocity,
                 cameraReturnSpeed
             );
@@ -161,37 +212,23 @@ public class CameraController : MonoBehaviour
 
         currentCameraDistance = Mathf.Clamp(
             currentCameraDistance,
-            0.15f,
-            cameraDistance
+            distanciaMin,
+            distanciaMax
         );
 
-        // =========================
-        // POSIÇÃO NO OMBRO
-        // =========================
-
-        Vector3 shoulderPosition =
-            cameraPivot.right * shoulderOffset;
-
-        Vector3 cameraPosition =
-            pivotPosition +
-            shoulderPosition +
-            direction * currentCameraDistance;
-
         thirdPersonCamera.transform.position =
-            cameraPosition;
+            origem + direction * currentCameraDistance;
 
         // =========================
-        // OLHAR PARA O PLAYER
+        // OLHAR
         // =========================
 
-        Vector3 lookTarget =
-            pivotPosition;
+        // Olha na direção em que o Player está olhando.
+        // Mirar no pivô puro fazia a câmera girar para dentro quanto mais
+        // perto ela chegava da parede: era isso que dava o efeito esquisito.
+        Vector3 lookDirection = -direction;
 
-        Vector3 lookDirection =
-            lookTarget -
-            thirdPersonCamera.transform.position;
-
-        if (lookDirection.sqrMagnitude > 0.001f)
+        if (lookDirection.sqrMagnitude > 0.0001f)
         {
             thirdPersonCamera.transform.rotation =
                 Quaternion.LookRotation(lookDirection);
@@ -201,6 +238,52 @@ public class CameraController : MonoBehaviour
     // =========================
     // TROCA DE CÂMERA
     // =========================
+
+    // Chamado pelo CameraRail quando o filminho começa:
+    // desliga as duas câmeras do Player e para de ler o mouse.
+    public void DesativarControle()
+    {
+        controleAtivo = false;
+
+        AplicarEstado();
+    }
+
+    // Chamado pelo CameraRail quando o trilho termina:
+    // volta para a primeira pessoa e devolve o controle ao jogador.
+    public void AtivarControle()
+    {
+        controleAtivo = true;
+
+        firstPerson = true;
+
+        AplicarEstado();
+    }
+
+    // Deixa as câmeras e o cursor coerentes com controleAtivo.
+    // Existe para a ordem dos Start() entre CameraRail e CameraController
+    // não importar: quem rodar por último chega no mesmo estado.
+    private void AplicarEstado()
+    {
+        if (controleAtivo)
+        {
+            SetCamera(firstPerson);
+
+            Cursor.lockState = CursorLockMode.Locked;
+            Cursor.visible = false;
+
+            return;
+        }
+
+        if (firstPersonCamera != null)
+        {
+            firstPersonCamera.gameObject.SetActive(false);
+        }
+
+        if (thirdPersonCamera != null)
+        {
+            thirdPersonCamera.gameObject.SetActive(false);
+        }
+    }
 
     private void SetCamera(bool useFirstPerson)
     {
