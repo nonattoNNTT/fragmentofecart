@@ -17,6 +17,8 @@ GameObject:
   - component: {fileID: 504545020719422333}
   - component: {fileID: 4670876014662808883}
   - component: {fileID: 7554165932813029424}
+  - component: {fileID: 453679856952475300}
+  - component: {fileID: 4188621638145075167}
   m_Layer: 0
   m_Name: Player
   m_TagString: Player
@@ -265,12 +267,14 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a8b35445f55c1544ab3cef827254a8c2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerMovement
-  walkSpeed: 5
-  sprintSpeed: 8
-  maxStamina: 5
+  walkSpeed: 7
+  sprintSpeed: 13
+  maxStamina: 10
   staminaDrain: 1
   staminaRecovery: 0.5
   staminaCooldownDuration: 5
+  fatorDeLentidao: 0.45
+  duracaoDaLentidao: 10
   suavizacaoAnimacao: 0.1
   cameraTransform: {fileID: 6156460184455577925}
   animator: {fileID: 0}
@@ -292,7 +296,7 @@ MonoBehaviour:
   mouseSensitivity: 0.15
   minVerticalAngle: -60
   maxVerticalAngle: 60
-  cameraDistance: 1.8
+  cameraDistance: 1.2
   cameraHeight: 0.5
   shoulderOffset: 0.6
   collisionRadius: 0.4
@@ -302,6 +306,8 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 4294967295
   controleAtivo: 1
+  modeloDoPlayer: {fileID: 0}
+  esconderModeloEmPrimeiraPessoa: 1
 --- !u!114 &4670876014662808883
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -336,6 +342,37 @@ MonoBehaviour:
     m_Bits: 55
   cameraAtual: {fileID: 0}
   velocidadePiscar: 4
+--- !u!81 &453679856952475300
+AudioListener:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4270987127792289407}
+  m_Enabled: 1
+--- !u!114 &4188621638145075167
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4270987127792289407}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 326ebf340edee354e8756a68144960eb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::RastroDeLuz
+  distanciaEntreMarcas: 1.6
+  duracao: 180
+  maxDeMarcas: 200
+  pegadaEsquerda: {fileID: 2100000, guid: eee518836a4df0143bbb7f0d32c624d4, type: 2}
+  pegadaDireita: {fileID: 2100000, guid: 8c31d80335e80664f98a4ef2b8ac269e, type: 2}
+  afastamentoLateral: 0.45
+  cor: {r: 1, g: 1, b: 1, a: 1}
+  opacidade: 0.45
+  tamanhoDaMarca: 1.1
+  alturaAcimaDoChao: 0.03
+  fracaoQueApaga: 0.35
 --- !u!1001 &4715760277637061788
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -388,11 +425,17 @@ PrefabInstance:
       propertyPath: m_Name
       value: CameraPivot
       objectReference: {fileID: 0}
+    - target: {fileID: 4532911751086481991, guid: e4518619cb0ee2f4f9bbc24934de1bb8, type: 3}
+      propertyPath: m_TagString
+      value: MainCamera
+      objectReference: {fileID: 0}
     - target: {fileID: 4601820508241449148, guid: e4518619cb0ee2f4f9bbc24934de1bb8, type: 3}
       propertyPath: playerMovement
       value: 
       objectReference: {fileID: 5583361800024472279}
-    m_RemovedComponents: []
+    m_RemovedComponents:
+    - {fileID: 735686176562049802, guid: e4518619cb0ee2f4f9bbc24934de1bb8, type: 3}
+    - {fileID: 384019323631567375, guid: e4518619cb0ee2f4f9bbc24934de1bb8, type: 3}
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
     m_AddedComponents: []

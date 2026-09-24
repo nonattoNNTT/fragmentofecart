@@ -9,6 +9,9 @@ public class InterativoTrocaCena : MonoBehaviour, IInterativo
     [Header("Condições")]
     [SerializeField] private bool possuiCondicoes = false;
 
+    [Tooltip("Quantas condições bastam para liberar. 0 = precisa de todas.")]
+    [SerializeField] private int quantasPrecisa = 0;
+
     [SerializeField] private InterativoCondicao[] condicoes;
 
     [Header("Highlight")]
@@ -26,23 +29,19 @@ public class InterativoTrocaCena : MonoBehaviour, IInterativo
             return;
         }
 
-        if (TodasCondicoesCompletas())
+        if (CondicoesSuficientes())
         {
             Debug.Log(
-                "Todas as condições foram cumpridas! Abrindo cena."
+                "Condições cumpridas! Abrindo cena."
             );
 
             TrocarCena();
         }
-        else
-        {
-            Debug.Log(
-                "Ainda existem condições que não foram cumpridas."
-            );
-        }
     }
 
-    private bool TodasCondicoesCompletas()
+    // 'quantasPrecisa' em 0 mantém o comportamento antigo: exige todas.
+    // Com 5 e oito cubos na lista, cinco quaisquer já liberam.
+    private bool CondicoesSuficientes()
     {
         if (condicoes == null ||
             condicoes.Length == 0)
@@ -50,23 +49,37 @@ public class InterativoTrocaCena : MonoBehaviour, IInterativo
             return true;
         }
 
+        int completas = 0;
+        int validas = 0;
+
         foreach (InterativoCondicao condicao in condicoes)
         {
             if (condicao == null)
                 continue;
 
-            if (!condicao.EstaCompleta)
-            {
-                Debug.Log(
-                    "Condição ainda não cumprida: " +
-                    condicao.gameObject.name
-                );
+            validas++;
 
-                return false;
+            if (condicao.EstaCompleta)
+            {
+                completas++;
             }
         }
 
-        return true;
+        int precisa = quantasPrecisa > 0
+            ? Mathf.Min(quantasPrecisa, validas)
+            : validas;
+
+        if (completas >= precisa)
+        {
+            return true;
+        }
+
+        Debug.Log(
+            "Faltam " + (precisa - completas) +
+            " cubo(s). " + completas + " de " + precisa + "."
+        );
+
+        return false;
     }
 
     private void TrocarCena()

@@ -8,6 +8,314 @@ fazer por causa disso.
 
 ## 24/09/2026 (quinta)
 
+### Oito cubos no mapa, cinco bastam (Claude Opus 5, a pedido da Julia)
+
+Antes eram cinco cubos e o vermelho exigia os cinco. Agora são **oito espalhados pelo
+labirinto e cinco quaisquer já liberam** o cubo vermelho.
+
+#### A mudança no `InterativoTrocaCena.cs`
+
+O script exigia **todas** as condições da lista — não dava para ter cubo sobrando. Ganhou um
+campo:
+
+```csharp
+[Tooltip("Quantas condições bastam para liberar. 0 = precisa de todas.")]
+[SerializeField] private int quantasPrecisa = 0;
+```
+
+O `TodasCondicoesCompletas()` virou `CondicoesSuficientes()` e passou a **contar** em vez de
+exigir todas. **Em 0 o comportamento é o antigo**, então os outros lugares que usam esse
+script (`Tela_1`, `Tela_1 1`) continuam funcionando igual — não precisa mexer em nada lá.
+
+#### Os três cubos novos
+
+Escolhidos por *farthest-point*: cada um vai para o ponto mais distante de tudo que já
+estava colocado, recalculando depois de cada escolha. Os candidatos saíram dos triângulos do
+NavMesh, com três filtros: **2,5 m de folga de parede**, dentro do miolo do labirinto, e
+**caminho `PathComplete` desde onde a Valentina nasce** — ou seja, dá para chegar a pé em
+todos.
+
+| Cubo | X | Z | Onde |
+|---|---|---|---|
+| 1 a 5 | de -171 a 61 | de -41 a 95 | os que já existiam, no centro-oeste |
+| **6** | 191 | -176 | canto sudeste |
+| **7** | -187 | -177 | canto sudoeste |
+| **8** | 195 | -6 | leste, no meio |
+
+Foram clonados do `CuboCondicao 5`, então material, escala e componentes são idênticos.
+
+> **Armadilha que o clone traz:** o `InterativoToggle` copiado continuava apontando para o
+> cubo **original**. Clicar no cubo 6 faria o cubo 5 sumir do outro lado do mapa. Cada um foi
+> reapontado para si mesmo, e os cinco antigos foram conferidos de novo.
+
+#### Testado em Play
+
+- 0 coletados → não libera · **4 → não libera** · **5 → libera** · 8 → libera
+- Testado com **duas combinações diferentes** de cinco (1,3,5,6,8 e 2,4,5,7,8): as duas
+  liberam. É cinco *quaisquer*, não cinco específicos.
+- Clicando do jeito que o jogo clica (o `InteractionSystem` dispara todos os `IInterativo` do
+  objeto): o cubo **some e continua contando** como coletado.
+- Os oito apoiam no chão exatamente na mesma altura dos antigos, sem flutuar.
+- Cena salva, recarregada do disco, as 8 referências continuam lá. Zero erros e warnings.
+
+#### Para a Julia
+
+`quantasPrecisa` é um campo no Inspector do `CuboTeleporte`. Se cinco de oito ficar fácil ou
+difícil demais no teste, **é só trocar esse número** — não precisa mexer em script nem tirar
+cubo do mapa.
+
+Ficou solto na cena um `Cube` em (-65, 1, 27), fora do `Desafio`, com os mesmos dois scripts.
+É o teste antigo e **não entra na conta dos oito**. Não mexi nele — se não serve mais, apaga.
+
+### Névoa de volta ao original e minimapa com a posição da Valentina (Claude Opus 5, a pedido da Julia)
+
+#### Névoa revertida
+
+A `NevoaViva` saiu do `Global Volume` e o fog voltou ao que era: **Exponential, `#283A4E`,
+densidade 0,33**, fixo. O `NevoaViva.cs` continua no projeto, desligado — se não for usar,
+é só apagar.
+
+#### Minimapa
+
+A primeira versão desenhava o mapa ao vivo com uma segunda câmera. **A Julia entregou o
+desenho dela do mapa, e a versão de câmera foi jogada fora inteira** — o `Minimapa.cs` foi
+reescrito e hoje não usa câmera nenhuma.
+
+Como funciona agora: o desenho fica parado na tela e **só o ponto anda em cima dele**, na
+mesma proporção em que a Valentina anda no labirinto. É uma conta de regra de três por
+quadro, contra uma câmera renderizando o mundo todo quadro.
+
+```
+MinimapaCanvas    (Canvas + CanvasScaler 1920x1080 + o script Minimapa)
+└── Mapa          (Image, Mapaaa.png, 300x266 no canto superior direito)
+    └── Ponto     (Image, "ponto de localização do mapa.png", 18x18)
+```
+
+As artes vieram de `Assets/Art/UI/Minimapa/`: `Mapaaa.png` (340×302) e
+`ponto de localização do mapa.png` (34×34), as duas já importadas como Sprite. Os 300×266 do
+`Mapa` mantêm a proporção do desenho original — esticar deformaria o traço dela.
+
+**Calibração:** `mundoMin` e `mundoMax` no Inspector são o pedaço do mundo (X e Z) que o
+desenho cobre. Foram preenchidos a partir dos limites reais do `Labirinto`:
+**(-243, -222) até (243, 223)**. O botão de contexto **"Pegar limites do Labirinto"**, no
+canto do componente, relê isso da cena sozinho. *Se o desenho tiver margem em volta ou
+enquadramento diferente do labirinto, são esses dois campos que se ajustam.*
+
+`pontoGira` está desligado (o desenho é uma bolinha, girar não mudaria nada) e
+`prenderNaBorda` ligado, para o ponto não escapar da moldura.
+
+**Testado em Play:** levei a Valentina aos quatro cantos do labirinto e o ponto foi para os
+quatro cantos do desenho, batendo com a conta esperada em todos. Depois saí do Play,
+recarreguei a cena do disco e a montagem continuou lá — este projeto já perdeu valor de
+Inspector em silêncio várias vezes. Zero erros e zero warnings.
+
+**Sobras apagadas:** a `MinimapaRT.renderTexture` e a câmera do minimapa não existem mais.
+
+### Corredores alargados para o Ursão caber (Claude Opus 5, a pedido da Julia)
+
+Escolha da Julia entre encolher o Ursão ou alargar o mapa: **alargar**.
+
+#### Como
+
+Escalei o `Labirinto` em **1,6x, só em X e Z** — a altura ficou intacta. Como o centro dele
+está na origem, escalar e multiplicar as posições por 1,6 basta; **o desenho do labirinto não
+muda**, só as distâncias. Reposicionei em X/Z os 23 objetos que vivem dentro dele (Player,
+15 monstros, 6 cubos do desafio, Ursão) e reassentei todos na NavMesh: **23 reassentados,
+0 sem lugar**.
+
+Mapa: **304 × 278 m → 486 × 445 m**.
+
+#### Resultado medido
+
+| | antes | depois |
+|---|---|---|
+| corredor 1% | 4,5 m | 6,4 m |
+| corredor 5% | 7,1 m | **11,3 m** |
+| corredor 10% | 9,0 m | 13,8 m |
+| corredor mediano | 18,8 m | **27,0 m** |
+| cobertura do Ursão | **26%** | **46%** |
+| caminho até a Valentina | **`PathPartial`** | **`PathComplete`** (47 curvas) |
+
+**O que importa: ele voltou a conseguir chegar nela.** Em play, caçando: corpo com raio
+5,15 m contra parede mais próxima a 11,69 m — **margem de 6,54 m**. 15/15 cubinhos na malha,
+zero erros e zero warnings.
+
+#### Ainda dá para melhorar
+
+**46% quer dizer que em mais da metade do mapa a Valentina está fora do alcance dele.** Ele
+alcança onde precisa para caçar, mas ela ainda tem onde se esconder. Para subir mais é a
+mesma conta: outro tanto de alargamento, ou um Ursão um pouco menor. O mapa já está em
+486 × 445 m — atravessar a pé, a 5 m/s, leva perto de um minuto e meio.
+
+#### Dois achados de passagem
+
+- **As paredes do labirinto estão com 162 m de altura** (de y = −78 a y = +84). Funciona,
+  mas é geometria muito maior do que o necessário e entra no cálculo de bounds da NavMesh.
+- **Existe um segundo chão, `Chão (1)`, em y ≈ 82** — 82 m acima do piso onde se joga. Se
+  não for intencional, é um objeto solto no meio do nada.
+
+### Urso no tamanho da Julia, tremor de aproximação, paredes encaixadas e névoa viva (Claude Opus 5, a pedido da Julia)
+
+#### Tremor quando o Ursão chega
+
+`HeadBob.cs` ganhou um tremor que **sobe conforme o Ursão se aproxima**: nada a 45 m, máximo
+a 8 m, com a curva ao quadrado (longe quase não treme, perto sobe rápido). O deslocamento usa
+**Perlin em dois eixos com frequências diferentes** — ruído, não seno, senão vira vibração de
+motor em vez de susto.
+
+Mede só a distância no plano do chão: o Ursão ser alto não conta como estar perto. Ele acha o
+Ursão sozinho, de segundo em segundo, porque o bicho pode nascer depois ou a cena trocar.
+
+**Medido:** Ursão a 51,8 m → tremor 0,000. Trazido para 9,2 m → tremor **0,968**.
+
+É aviso de perigo sem gastar som nem interface. `tremorLigado` desliga tudo sem mexer no
+resto do head bob.
+
+#### Paredes encaixadas
+
+Havia **32 frestas** entre segmentos vizinhos, a maior de 1,47 m. Fechei esticando as duas
+paredes de cada par ao longo do eixo da fresta (mais 0,15 m de sobra), em duas passadas —
+**sobrou zero**.
+
+**Só fechei fresta menor que 2,0 m**, que é estreito demais para a Valentina (cápsula de
+2,17 m) passar. Ou seja, eram costura, não passagem. Conferido pela NavMesh: a cobertura dela
+foi de **1208 para 1209 pontos** — não fechei nenhum caminho.
+
+#### Névoa viva
+
+A névoa estava em **densidade 0,33 fixa** — exponencial nesse valor é quase opaco a 10 m, num
+mapa de corredores de 16 m.
+
+**`NevoaViva.cs`** (novo) faz ela respirar: densidade base **0,035** variando ±45% com Perlin
+lento, mais **rajadas** (um segundo ruído elevado ao cubo, que fica perto de zero quase sempre
+e estoura de vez em quando — é o que faz parecer fumaça passando, e não pulsação). A cor
+passeia entre **#283A4E** e **#020106**, as duas da paleta fechada.
+
+Usa o fog do próprio Unity, que no URP custa quase nada. **Névoa volumétrica de verdade não
+cabe nos 40 fps do alvo.** Medido em Play: densidade oscilando entre 0,0317 e 0,0402 sozinha.
+
+#### Urso no tamanho que a Julia colocou
+
+Ela deixou o Ursão em escala 1,4428 → **14,89 m de altura**, raio de corpo 5,43 m. Mantive o
+tamanho. Mas o `Modelo` estava **100 m longe do pivô** de novo (`localPos (39,70 · -1,50 ·
+-91,90)`) — recentrado, e o agente subiu para **raio 5,7**, com `catchDistance` 7,2.
+
+**O preço, medido:**
+
+| raio do agente | altura | alcança do mapa |
+|---|---|---|
+| 2,0 | 4,9 m | **79%** |
+| **5,7 (o tamanho atual)** | **14,9 m** | **26%** |
+
+E o caminho dele até a Valentina virou **`PathPartial`** — ou seja, **neste tamanho ele não
+consegue mais chegar nela**. Um bicho de 15 m precisa de corredor de 11,4 m, e 10% do
+labirinto tem 8,4 m ou menos.
+
+**Entregue no tamanho pedido, mas isto precisa de decisão:** ou o Ursão desce para uns 5 m
+(volta a alcançar ~79%), ou os corredores do labirinto precisam alargar. Não dá para ter os
+dois com o mapa do jeito que está.
+
+### Paredes mais grossas, bake do mapa novo, e o Ursão que tinha escapado do pivô (Claude Opus 5, a pedido da Julia)
+
+#### Mapa novo
+
+A Julia aumentou o labirinto: agora é **304 × 278 m** (era 244 × 223), com **470 paredes de
+11 m de altura**. E ficou mais aberto: corredor **mediana 16,1 m**, 10% em 8,4 m — antes a
+mediana era 11,1 m.
+
+#### Paredes mais grossas
+
+Estavam com **0,28 m**. Para uma personagem de 4,33 m isso é papel. Foram para **1,00 m**,
+3,5x mais grossas — proporcionalmente é como uma parede de 40 cm para gente de 1,70 m.
+
+Engrossei pelo **eixo horizontal mais fino de cada parede**, e como o cubo cresce em volta do
+próprio centro, **a linha do meio do labirinto não muda** — o desenho do mapa continua igual,
+só a parede engorda para os dois lados. Custo medido: 0,72 m de cada corredor, que no mapa
+novo é folgado (10% ficou em 7,7 m).
+
+#### Bake
+
+As duas superfícies rebakeadas no mapa novo: **`NavMesh`** (Humanoid, raio 0,5) e
+**`NavMesh Ursao`** (raio 2,0). De 3.612 para **4.018 triângulos**.
+
+| | cobertura |
+|---|---|
+| Humanoid (Valentina e cubinhos) | 1208 pontos |
+| Ursão | 960 pontos = **79% do que a Valentina alcança** |
+
+Era 72% no mapa antigo — **melhorou**, porque o mapa novo é mais aberto. Caminho do Ursão até
+a Valentina: **`PathComplete`, 22 curvas**.
+
+#### O Ursão tinha escapado do pivô de novo
+
+No teste, o corpo dele media **raio de 5,90 m** e o `Modelo` estava **40 m longe** da raiz,
+com escala 1,66 — nada disso era o que eu tinha gravado (escala 0,4785, deslocamento de
+4 m). Não era root motion: `applyRootMotion` estava `false` e o `deltaPosition` do Animator
+era zero. **Estava assim na cena salva** — alguma coisa reescreveu o transform do `Modelo`
+entre uma sessão e outra.
+
+Refiz do zero, e desta vez **conferi recarregando a cena**: escala 0,4785 e
+`localPos (-3,995 · 0,049 · -0,525)` sobreviveram. Os ossos voltaram de **39,6 m para 1,74 m**
+do pivô.
+
+> Lição: **não basta salvar, tem que recarregar e reler.** Esse transform já tinha voltado
+> sozinho antes e eu só percebi no teste seguinte.
+
+**Testado em play, duas medições durante a caçada a 4,20 m/s:**
+
+| t | raio do corpo | parede mais próxima | margem |
+|---|---|---|---|
+| 15,2 s | 1,65 m | 2,73 m | **1,07 m** |
+| 28,8 s | 1,70 m | 3,01 m | **1,31 m** |
+
+`Modelo.localPosition` estável nos dois. Cubinhos: 15/15 na malha e 15/15 animando. Zero
+erros e zero warnings.
+
+### Merge resolvido, Ursão maior e pegadas mais claras (Claude Opus 5, a pedido da Julia)
+
+#### O merge parado
+
+`docs/DIARIO.md` estava em conflito e havia `.git/MERGE_HEAD` — um `git merge` começado e não
+terminado, que impedia qualquer commit.
+
+Os dois lados eram conteúdo bom e de assuntos diferentes: o lado HEAD com as entradas de 22,
+23 e 24/09, e o commit `c92dead` do JP com o **`MonsterAI` v3 / occupancy map**. **Resolvido
+mantendo os dois**, em ordem de data, e o merge foi fechado no commit `3d613f7`.
+
+Só entrou no commit o que já estava no índice do merge — `MonsterAI.cs`, `OccupancyMap.cs`,
+os dois docs. **Todo o trabalho dos últimos dias continua fora do Git**, sem commit. Backup do
+arquivo em conflito guardado fora do projeto antes de mexer.
+
+#### Ursão maior
+
+Estava com 2,74 m, menor que a Valentina. Remedido o custo de cada tamanho:
+
+| raio do agente | altura do urso | alcança do mapa |
+|---|---|---|
+| 1,2 (era) | 2,7 m | 93% |
+| **2,0 (agora)** | **4,9 m** | **72%** |
+| 2,4 | 6,0 m | 56% |
+| 3,0 | 7,7 m | 42% |
+
+Escolhi **raio 2,0**: ele ficou com **4,94 m**, mais alto que a Valentina (4,33 m), e ainda
+alcança **72% do labirinto**. Mexi em três coisas juntas, que é o que esse ajuste exige:
+escala do `Modelo` (0,2658 → 0,4785), `radius` do `NavMeshAgent` e `agentRadius` do agent type
+"Ursao", mais o rebake da NavMesh dele.
+
+**Testado caçando a 4,20 m/s:** raio do corpo 1,68 m contra parede mais próxima a 2,60 m —
+**margem de 0,92 m, não encosta**.
+
+#### Pegadas mais claras
+
+Duas coisas estavam pesando nelas:
+
+1. O `MaterialPropertyBlock` pintava a pegada com a cor `#643847` da fase anterior do rastro,
+   por cima da arte. Agora a tinta é **branca**, então a pegada aparece como foi desenhada.
+2. Campo novo **`opacidade`** (0 a 1, em **0,45**), que multiplica o alfa. Mais baixo = mais
+   clara.
+
+É um slider no Inspector do Player — dá para afinar sem código.
+
 ### Animações do ursinho e rastro de pegadas (Claude Opus 5, a pedido da Julia)
 
 A Julia trouxe dois assets: o **modelo animado do ursinho** (`UrsinhoIdle.blend`,

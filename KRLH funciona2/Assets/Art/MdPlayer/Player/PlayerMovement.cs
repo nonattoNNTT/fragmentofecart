@@ -15,6 +15,13 @@ public class PlayerMovement : MonoBehaviour
     [Header("Cooldown")]
     public float staminaCooldownDuration = 5f;
 
+    [Header("Lentidão")]
+    [Tooltip("Quanto da velocidade sobra enquanto está lenta. 0,45 = 45% do normal.")]
+    public float fatorDeLentidao = 0.45f;
+
+    [Tooltip("Quantos segundos a lentidão dura quando um monstro encosta.")]
+    public float duracaoDaLentidao = 10f;
+
     [Header("Animação")]
     [Tooltip("Suaviza a troca entre parado, andando e correndo. 0 troca seco.")]
     public float suavizacaoAnimacao = 0.1f;
@@ -38,6 +45,8 @@ public class PlayerMovement : MonoBehaviour
     private float gravity = -9.81f;
     private float verticalVelocity;
 
+    private float tempoDeLentidao;
+
     private void Awake()
     {
         controller = GetComponent<CharacterController>();
@@ -54,10 +63,57 @@ public class PlayerMovement : MonoBehaviour
 
     private void Update()
     {
+        UpdateLentidao();
         UpdateStamina();
         UpdateCooldown();
         Move();
         UpdateAnimation();
+    }
+
+    // =========================================================
+    // LENTIDÃO
+    // =========================================================
+
+    // Chamado pelos monstros quando encostam nela.
+    // Encostar de novo antes de acabar renova o tempo, não soma.
+    public void AplicarLentidao()
+    {
+        AplicarLentidao(duracaoDaLentidao);
+    }
+
+    public void AplicarLentidao(float segundos)
+    {
+        tempoDeLentidao = Mathf.Max(tempoDeLentidao, segundos);
+
+        Debug.Log(
+            "🐌 Valentina mais lenta por " +
+            tempoDeLentidao.ToString("F0") + "s"
+        );
+    }
+
+    private void UpdateLentidao()
+    {
+        if (tempoDeLentidao <= 0f)
+            return;
+
+        tempoDeLentidao -= Time.deltaTime;
+
+        if (tempoDeLentidao <= 0f)
+        {
+            tempoDeLentidao = 0f;
+
+            Debug.Log("🏃 Velocidade normal de volta.");
+        }
+    }
+
+    public bool EstaLenta
+    {
+        get { return tempoDeLentidao > 0f; }
+    }
+
+    public float TempoDeLentidaoRestante
+    {
+        get { return tempoDeLentidao; }
     }
 
     // =========================
@@ -109,6 +165,12 @@ public class PlayerMovement : MonoBehaviour
         float speed = isSprinting
             ? sprintSpeed
             : walkSpeed;
+
+        // Monstro encostou: ela anda devagar até o tempo passar
+        if (tempoDeLentidao > 0f)
+        {
+            speed *= fatorDeLentidao;
+        }
 
         // Gravidade
         if (controller.isGrounded && verticalVelocity < 0)

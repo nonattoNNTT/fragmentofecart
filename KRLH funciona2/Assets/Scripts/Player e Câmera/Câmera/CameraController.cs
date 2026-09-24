@@ -32,14 +32,44 @@ public class CameraController : MonoBehaviour
     [Tooltip("Desligado enquanto o trilho da câmera roda. Quem liga e desliga é o CameraRail.")]
     public bool controleAtivo = true;
 
+    [Header("Modelo em primeira pessoa")]
+    [Tooltip("O modelo da Valentina. Some em primeira pessoa e volta em terceira. Vazio = acha sozinho pelo Animator.")]
+    public Transform modeloDoPlayer;
+
+    [Tooltip("Desligue se quiser enxergar o corpo tambem em primeira pessoa.")]
+    public bool esconderModeloEmPrimeiraPessoa = true;
+
     private Vector2 lookInput;
 
     private float verticalRotation = 0f;
 
     private bool firstPerson = true;
 
+    private Renderer[] renderizadoresDoCorpo;
+
     private float currentCameraDistance;
     private float cameraDistanceVelocity;
+
+    private void Awake()
+    {
+        // Precisa ser no Awake: o Start ja chama AplicarEstado,
+        // que decide se o corpo aparece ou nao.
+        if (modeloDoPlayer == null)
+        {
+            Animator animador = GetComponentInChildren<Animator>(true);
+
+            if (animador != null)
+            {
+                modeloDoPlayer = animador.transform;
+            }
+        }
+
+        if (modeloDoPlayer != null)
+        {
+            renderizadoresDoCorpo =
+                modeloDoPlayer.GetComponentsInChildren<Renderer>(true);
+        }
+    }
 
     private void Start()
     {
@@ -283,6 +313,10 @@ public class CameraController : MonoBehaviour
         {
             thirdPersonCamera.gameObject.SetActive(false);
         }
+
+        // No filminho quem filma e a camera cinematica, entao o corpo
+        // precisa aparecer mesmo com as cameras do Player desligadas.
+        MostrarCorpo(true);
     }
 
     private void SetCamera(bool useFirstPerson)
@@ -295,10 +329,32 @@ public class CameraController : MonoBehaviour
             !useFirstPerson
         );
 
+        // Em primeira pessoa a camera fica dentro do corpo: esconder o
+        // modelo evita ver o pescoco e o cabelo por dentro.
+        MostrarCorpo(
+            !useFirstPerson || !esconderModeloEmPrimeiraPessoa
+        );
+
         if (!useFirstPerson)
         {
             currentCameraDistance = cameraDistance;
             cameraDistanceVelocity = 0f;
+        }
+    }
+
+    // Liga e desliga so os Renderer, nunca o GameObject:
+    // desligar o objeto pararia o Animator e a animacao perderia o estado.
+    private void MostrarCorpo(bool visivel)
+    {
+        if (renderizadoresDoCorpo == null)
+            return;
+
+        foreach (Renderer r in renderizadoresDoCorpo)
+        {
+            if (r != null)
+            {
+                r.enabled = visivel;
+            }
         }
     }
 }

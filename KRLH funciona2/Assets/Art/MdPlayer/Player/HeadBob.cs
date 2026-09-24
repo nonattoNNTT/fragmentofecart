@@ -26,8 +26,29 @@ public class HeadBob : MonoBehaviour
     [Header("FOV Smooth")]
     public float fovSmooth = 8f;
 
+    [Header("Tremor do Ursão")]
+    [Tooltip("O Ursão. Vazio = procura sozinho pelo UrsaoMortal na cena.")]
+    public Transform ursao;
+
+    [Tooltip("A partir desta distância a câmera começa a tremer.")]
+    public float distanciaDoTremor = 45f;
+
+    [Tooltip("Distância em que o tremor chega no máximo.")]
+    public float distanciaDoTremorMaximo = 8f;
+
+    [Tooltip("Quanto a câmera treme no pior caso, em metros.")]
+    public float forcaDoTremor = 0.12f;
+
+    [Tooltip("Quão rápido o tremor sacode.")]
+    public float velocidadeDoTremor = 22f;
+
+    [Tooltip("Desligue para tirar o tremor sem mexer no resto.")]
+    public bool tremorLigado = true;
+
     private Vector3 originalPosition;
     private float bobTimer;
+    private float tremorAtual;
+    private float procuraTimer;
 
     private void Start()
     {
@@ -43,7 +64,98 @@ public class HeadBob : MonoBehaviour
             return;
 
         UpdateHeadBob();
+        UpdateTremor();
         UpdateFOV();
+    }
+
+    // =========================================================
+    // TREMOR DO URSÃO
+    // =========================================================
+
+    // Quanto mais perto o Ursão chega, mais a câmera treme.
+    // É aviso de perigo sem precisar de som nem de interface.
+    private void UpdateTremor()
+    {
+        if (!tremorLigado)
+            return;
+
+        AcharUrsao();
+
+        float alvo = 0f;
+
+        if (ursao != null)
+        {
+            // Só o plano do chão: ele ser alto não conta como estar perto.
+            Vector3 a = transform.position;
+            Vector3 b = ursao.position;
+
+            a.y = 0f;
+            b.y = 0f;
+
+            float distancia = Vector3.Distance(a, b);
+
+            if (distancia < distanciaDoTremor)
+            {
+                float t = Mathf.InverseLerp(
+                    distanciaDoTremor,
+                    distanciaDoTremorMaximo,
+                    distancia
+                );
+
+                // ao quadrado: longe quase não treme, perto sobe rápido
+                alvo = t * t;
+            }
+        }
+
+        // Sobe e desce suave, para não ligar e desligar de repente
+        tremorAtual = Mathf.Lerp(
+            tremorAtual,
+            alvo,
+            3f * Time.deltaTime
+        );
+
+        if (tremorAtual <= 0.001f)
+            return;
+
+        // Ruído em duas frequências: sacode sem virar vibração de motor
+        float tempo = Time.time * velocidadeDoTremor;
+
+        float x =
+            (Mathf.PerlinNoise(tempo, 0f) - 0.5f) * 2f;
+
+        float y =
+            (Mathf.PerlinNoise(0f, tempo * 1.3f) - 0.5f) * 2f;
+
+        transform.localPosition +=
+            new Vector3(x, y, 0f) * forcaDoTremor * tremorAtual;
+    }
+
+    // Procura de tempos em tempos, não todo quadro:
+    // o Ursão pode nascer depois, ou trocar de cena.
+    private void AcharUrsao()
+    {
+        if (ursao != null)
+            return;
+
+        procuraTimer -= Time.deltaTime;
+
+        if (procuraTimer > 0f)
+            return;
+
+        procuraTimer = 1f;
+
+        UrsaoMortal achado =
+            FindFirstObjectByType<UrsaoMortal>();
+
+        if (achado != null)
+        {
+            ursao = achado.transform;
+        }
+    }
+
+    public float TremorAtual
+    {
+        get { return tremorAtual; }
     }
 
     // =========================================================

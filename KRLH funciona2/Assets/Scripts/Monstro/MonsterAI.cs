@@ -1137,11 +1137,29 @@ public class MonsterAI : MonoBehaviour
     // Chamado quando o monstro encosta no jogador.
     // Deixado assim de proposito: o que acontece ao ser pego e game design,
     // nao e decisao do cerebro do monstro. Ligue aqui a tela de morte.
+    // Quem quiser reagir quando este monstro pega o jogador se inscreve aqui.
+    // E assim que o cubinho atrasa a Valentina e o Ursao troca de cena, sem
+    // que este script precise saber nada sobre eles.
+    public event System.Action<MonsterAI> AoPegarOJogador;
+
     private void OnCatchPlayer()
     {
         currentThought = "Peguei ela.";
         PlayVoice(catchSounds);
         Debug.Log("MonsterAI: pegou o jogador.");
+
+        if (AoPegarOJogador != null)
+        {
+            AoPegarOJogador(this);
+        }
+    }
+
+    // Manda o monstro recuar agora, do lado de fora. O Retreat ja existe e ja
+    // manda ele para o ponto mais longe; isto so da a ordem, e o retreatTime
+    // do Inspector decide quanto tempo ele fica longe.
+    public void ForcarRecuo()
+    {
+        EnterState(MonsterState.Retreat);
     }
 
     // =========================================================
