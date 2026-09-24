@@ -94,6 +94,17 @@ public class InterativoTrocaCena : MonoBehaviour, IInterativo
             return;
         }
 
+        // Se a cena tiver uma cortina de fade, escurece antes de trocar.
+        // Sem cortina, troca na hora, como sempre fez.
+        FadeDeTela fade = FindFirstObjectByType<FadeDeTela>();
+
+        if (fade != null)
+        {
+            fade.SairEDepoisCarregar(nomeDaCena);
+
+            return;
+        }
+
         SceneManager.LoadScene(nomeDaCena);
     }
 

@@ -8,6 +8,118 @@ fazer por causa disso.
 
 ## 24/09/2026 (quinta)
 
+### Fade entre a Tela_1 e a Tela_1 1 (Claude Opus 5, a pedido da Julia)
+
+Pedido: fade in indo da `Tela_1` para a `Tela_1 1`. Quem dispara a troca é a **Cama**
+(`InterativoTrocaCena`) — a Valentina dorme e a tela muda.
+
+**`FadeDeTela.cs`** (novo): uma cortina preta por cena. A cena velha escurece, a Unity
+carrega a nova, e a nova clareia sozinha no `Start`. **Sem `DontDestroyOnLoad` e sem objeto
+que atravessa cena** — que é exatamente onde esse tipo de sistema costuma quebrar.
+
+Montagem, igual nas duas cenas:
+
+```
+FadeCanvas   (Canvas ordem 999 + CanvasScaler 1920x1080 + GraphicRaycaster + FadeDeTela)
+└── Cortina  (Image #020106 da paleta, ancorada nos 4 cantos)
+```
+
+| Cena | entrarComFade | Entrada | Saída |
+|---|---|---|---|
+| `Tela_1` | **desligado** | 0,8 s | **0,6 s** |
+| `Tela_1 1` | **ligado** | **0,8 s** | 0,6 s |
+
+A `Tela_1` só escurece na saída; a `Tela_1 1` é que clareia na entrada. **O fade de saída da
+Tela_1 não foi pedido**, mas sem ele o fade in vira um corte seco para o preto e depois um
+clareamento. Para ter o corte seco, é só pôr `duracaoDaSaida` em 0 no Inspector.
+
+O `InterativoTrocaCena` ganhou três linhas: procura um `FadeDeTela` na cena e, **se não
+achar, troca de cena na hora como sempre fez**. As outras transições (`Tela_1 1` →
+`SampleScene`, o cubo vermelho, o Ursão) continuam iguais até alguém pôr uma cortina nelas.
+
+#### Detalhes que custaram
+
+- **A cortina fica com alpha 0 no arquivo** e o `Awake` põe em 1 antes do primeiro quadro.
+  Salva opaca, a `Tela_1` abriria toda preta na janela Scene e ninguém enxergaria a cena.
+- **`raycastTarget` acompanha o alpha.** Uma Image transparente de tela inteira com raycast
+  ligado engoliria o clique de todo botão embaixo dela.
+- Usa `Time.unscaledDeltaTime`: se alguém pausar com `timeScale`, o fade não trava.
+
+#### Testado
+
+Sem entrar em Play — a Julia estava com a `Tela_inicial` aberta e não salva, então as duas
+cenas foram abertas em **modo aditivo**, editadas, salvas e fechadas, sem encostar no que ela
+estava mexendo. A corrotina foi rodada passo a passo:
+
+- depois do `Awake`: alpha **1,00** (a cena não pisca antes de escurecer)
+- 24 passos, ~0,82 s para a duração pedida de 0,8 s, alpha caindo sempre, nunca subindo
+- alpha final **0,00** e `raycastTarget` **false**
+- rampa da saída conferida: 0,00 → 0,25 → 0,50 → 0,75 → 1,00 ao longo dos 0,6 s
+
+### Olhos seguindo o cursor e fumaça em Multiply (Claude Opus 5, a pedido da Julia)
+
+#### Os olhos
+
+O `EyeFollow.cs` antigo **girava** o objeto (`transform.up = direction`) e usava
+`ScreenToWorldPoint`, que não vale para Canvas em *Screen Space Overlay* — a íris saía
+voando. Foi reescrito: agora ela **desliza** dentro da amêndoa, como olho de verdade, e o
+limite é uma **elipse inclinada**, porque as amêndoas desta arte estão tortas.
+
+**Os números não foram chutados, foram medidos** na `interface sem bolas.png`: flood fill no
+branco de cada olho, PCA para achar centro, eixos e inclinação, e depois transformada de
+distância para saber até onde a íris anda sem vazar para o preto.
+
+| Olho | Centro | Anda (longo × curto) | Inclinação |
+|---|---|---|---|
+| olhobola1 | (164, 354) | 90 × 13 px | -40° |
+| olhobola2 | (683, 265) | 109 × 14 px | -36° |
+| olhobola3 | (705, -153) | 113 × 25 px | -45° |
+
+**Os centros desceram 12 px** a pedido da Julia: o centro geométrico da amêndoa deixava a
+íris alta demais. Compus as três opções por cima da arte e olhei — **a 24 px a íris de cima
+escapa por baixo da amêndoa**, a 12 px assenta bem. O `olhobola3` voltou praticamente para
+onde a Julia tinha deixado (-153).
+
+**A folga é 15 px.** A íris preenche quase toda a órbita, então "não vazar nada" dava só 6 a
+24 px de curso — invisível. Compus a íris na posição extrema por cima da arte e olhei: com
+15 px ela encosta no canto e ainda lê como olho; **com 30 px ela cai no preto, fora da
+amêndoa.** As duas imagens ficaram no scratchpad da sessão.
+
+O componente tem um Gizmo: selecionando o olho na janela Scene, a elipse do limite aparece
+em ciano. É por ali que se ajusta no olho, sem precisar medir de novo.
+
+**Testado:** cursor nos quatro cantos reais do Canvas (3840×2160 na tela, porque o Canvas
+está em escala 2) e no centro. **Erro de mira: 0,0°** em todos. **Saiu do olho: nenhuma vez.**
+
+#### A fumaça
+
+Criado o shader **`UI/Multiply`** (`Assets/Art/Shaders/UI-Multiply.shader`) e o material
+`Assets/Art/Materiais UI/FumacaMultiply.mat`, aplicado na `fumaça`. É o `UI/Default` da
+Unity com `Blend DstColor Zero`, mantendo o Stencil para não quebrar Mask nem RectMask2D. O
+alpha continua valendo como opacidade, porque o fragmento faz `lerp(branco, cor, alpha)` — e
+branco é o neutro do multiply.
+
+> **O que o Multiply não resolve:** os frames do GIF são **100% opacos** (alpha 1,00 em todo
+> pixel) e o fundo deles é quase preto. Compondo antes e depois, o Multiply melhora bastante
+> — a emenda dura do retângulo suaviza e o "FRAGMENTO?" recupera contraste — mas **a borda do
+> quadro ainda aparece**, porque multiplicar por quase-preto escurece a arte de baixo.
+> Para fumaça clara sobre fundo escuro, quem faz o preto sumir de verdade é **Screen/Aditivo**,
+> não Multiply. Fica registrado para quando a Julia decidir.
+
+#### As duas Panels, resolvido
+
+Durante o trabalho a `Panel` foi **duplicada** — apareceu uma `Panel (1)` idêntica, e meus
+primeiros ajustes caíram na original, que naquele momento estava desativada. Configurei as
+duas para não depender de qual ficasse.
+
+**A Julia apagou a duplicada enquanto eu trabalhava.** Sobrou só a `Panel (1)`, já com os
+três olhos configurados. Ela também moveu a `fumaça` para dentro da Panel, em (50, -32).
+
+> **Lição para a próxima sessão:** a Julia mexe na cena enquanto o agente trabalha. Procurar
+> objeto por caminho fixo (`Find("Panel/GameObject/olhobola1")`) quebra no meio do caminho.
+> Melhor procurar por componente (`FindObjectsByType`) e conferir a hierarquia de novo antes
+> de escrever.
+
 ### Oito cubos no mapa, cinco bastam (Claude Opus 5, a pedido da Julia)
 
 Antes eram cinco cubos e o vermelho exigia os cinco. Agora são **oito espalhados pelo
