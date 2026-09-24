@@ -5,6 +5,735 @@ fazer por causa disso.
 
 ---
 
+
+## 24/09/2026 (quinta)
+
+### Animações do ursinho e rastro de pegadas (Claude Opus 5, a pedido da Julia)
+
+A Julia trouxe dois assets: o **modelo animado do ursinho** (`UrsinhoIdle.blend`,
+`UrsinhoWalk.blend`, `UrsinhoRun.blend`, em `Art/Monstro/`) e as **pegadas**
+(`Art/pegada esquerda.png` e `pegada direita.png`).
+
+#### Ursinho animado
+
+Os três `.blend` estavam com `loopTime = false` — ligados junto com `loopPose`, senão a
+costura salta, que foi o problema do idle da Valentina no dia 22.
+
+**Conferido antes de montar:** os três têm **330 curvas e 33 caminhos idênticos**
+(`Armature/mixamorig:*`), com `Armature` em escala 0,01 nos três. Ou seja, **são
+intercambiáveis** — não repetiram o problema de escala que os clipes novos da Valentina
+tiveram.
+
+- **`Art/Monstro/ursinhoAnimator.controller`** (novo) — `idle ⇄ walk ⇄ run` pelo parâmetro
+  `Speed`, mesma regra da Valentina e do Ursão: `<0,1` parado · `0,1–0,75` andando ·
+  `>0,75` correndo. Não inventei padrão novo.
+- **`Scripts/Monstro/AnimarMonstro.cs`** (novo) — lê a velocidade real do `NavMeshAgent` e
+  escreve no `Speed`. É genérico: serve para qualquer monstro com `MonsterAI`.
+- O `Animator` foi para o modelo (`UrsinhoIdle` dentro da prefab), com
+  `cullingMode = CullUpdateTransforms` — **com 15 monstros na cena, não faz sentido animar
+  quem está fora da tela**.
+- Tudo na `Monstro.prefab`, então valeu para os 15 de uma vez.
+
+**Testado:** 15/15 com Animator e controller; andando a 2,60 m/s o parâmetro vai a 0,50 e a
+animação toca `walk`.
+
+#### Rastro vira pegadas
+
+O `RastroDeLuz.cs` deixou de largar plaquinhas genéricas e agora larga **pegada esquerda e
+direita, alternando**, cada uma jogada para o seu lado (`afastamentoLateral`, 0,45 m) e
+**girada para onde a Valentina está olhando**. Sem o afastamento elas sairiam em fila
+indiana, no meio; sem o giro, apontariam para um lado qualquer.
+
+Materiais novos em `Art/MdPlayer/Materiais/`: `PegadaEsquerda.mat` e `PegadaDireita.mat`,
+unlit transparente. As PNGs foram reimportadas com `alphaIsTransparency` e **`wrapMode =
+Clamp`** — sem o Clamp a pegada repete na borda do quad.
+
+O passo ficou em **1,6 m** (era 3 m), que é distância de passada. O resto continua igual:
+piscina fixa de 200, sem `Collider`, some em **180 s**.
+
+**Testado**, com a Valentina virada para +X:
+
+| pegada | posição | desvio lateral |
+|---|---|---|
+| `PegadaEsquerda` | (-57,28 · 0,44 · 25,82) | **+0,45 m** |
+| `PegadaDireita` | (-55,28 · 0,44 · 24,92) | **−0,45 m** |
+
+Ambas com `rotY = 90`, acompanhando o olhar dela. Zero erros e zero warnings.
+
+> **Detalhe:** o `MeshRenderer` do `Corpo` (o cubo placeholder) já estava desligado na
+> prefab — quem desligou não fui eu, e está certo: quem aparece agora é o ursinho.
+
+### ⚠️ Tem um merge do Git parado no meio
+
+`docs/DIARIO.md` está em conflito (`UU`) e existe `.git/MERGE_HEAD` — ou seja, **um `git
+merge` foi começado e não terminou**. Os marcadores estão nas linhas 8, 1111 e 1172.
+
+- **Lado HEAD:** as entradas que venho escrevendo (22, 23 e 24/09).
+- **Lado que veio:** commit `c92dead` do JP (`Yshinu`), de 22/09 — o **`MonsterAI` v3 com
+  occupancy map**, que é o que trouxe o `OccupancyMap.cs` novo.
+
+**Os dois lados são conteúdo bom e não se sobrepõem** — a resolução certa é ficar com os
+dois, em ordem de data. Não resolvi sozinho porque é decisão de quem está tocando o Git.
+Enquanto o merge não fechar, `git commit` normal não passa.
+
+## 23/09/2026 (terça)
+
+### Ursão: velocidade reduzida e a causa real do pivô/paredes (Claude Opus 5, a pedido da Julia)
+
+Pedido: o Ursão está rápido demais, e continua atravessando parede.
+
+#### Velocidade
+
+`huntSpeed` **6,8 → 4,2**, `walkSpeed` 1,6, `searchSpeed` 2,4. A Valentina anda a 5 e corre a
+8, então **agora ela escapa dele até andando** — mas ele nunca desiste, que era o pedido
+anterior. O limiar de corrida do `UrsaoMortal` foi para 3,5 para que, caçando a 4,2, ele use
+a animação **Run** e não a Walk.
+
+#### O pivô: por que minhas correções anteriores não pegavam
+
+**A animação sobrescreve a posição da `Armature` todo frame.** O primeiro caminho de curva
+dos clipes é `Armature.001` — ou seja, o clipe anima o transform do próprio esqueleto.
+Qualquer `localPosition` que eu ajustasse nos filhos era apagada no frame seguinte. Por isso
+o pivô parecia certo em edição e continuava errado em Play.
+
+**Conserto: um nó intermediário que a animação não controla.** O Ursão foi reconstruído:
+
+```
+Ursao   (NavMeshAgent, MonsterAI, UrsaoMortal)
+└── Modelo   (Animator; localPosition é a correção do pivô)
+    ├── Armature.001   (a animação mexe aqui)
+    └── Cube.001
+```
+
+Com o `Animator` no `Modelo`, os caminhos dos clipes continuam resolvendo, e o
+`Modelo.localPosition` fica livre. Correção aplicada: **(-2,22 · 0,03 · -0,29)**, e a
+verificação convergiu para erro **0,000** em um passo.
+
+#### Três ferramentas de medição que mentiram
+
+Perdi várias tentativas confiando em medidas erradas. Vale registrar:
+
+| medida | o que dizia | verdade |
+|---|---|---|
+| `Renderer.bounds` do modelo | pegada de 1,45 m | 5,46 m |
+| `SkinnedMeshRenderer.BakeMesh` + `TransformPoint` | coordenadas que não reagiam ao pai | — |
+| posição dos ossos, sem animação aplicada | raio 0,39 m | 3,76 m |
+
+**O que funciona: amostrar os clipes com `SampleAnimation` no objeto do `Animator` e ler a
+posição dos ossos em espaço de mundo.** Foi assim que os números abaixo saíram.
+
+#### O tamanho: o urso é um quadrúpede, largo para a altura
+
+Medido por instante, em cada clipe:
+
+| clipe | raio | altura | raio/altura |
+|---|---|---|---|
+| Idle | 5,38 m | 9,86 m | **0,55** |
+| Walk | 3,76 m | 10,32 m | 0,36 |
+| Run | 3,69 m | 9,62 m | 0,38 |
+
+Ele é **largo**, não esguio — e num labirinto de corredores de ~2,4 m isso limita a altura
+dele. Dimensionei pelos clipes de **movimento** (Walk/Run, que são os que percorrem o mapa),
+com `escala 0,2658`:
+
+- raio andando/correndo = **1,00 m**, contra raio 1,2 do agente → **margem de 0,20 m**
+- raio parado = 1,43 m, passa 0,23 m do agente — mas parado ele não está entrando em corredor
+- **altura = 2,74 m** (Valentina tem 4,33 m)
+
+**Testado em Play Mode:** caçando a 4,20 m/s, raio do corpo 0,84 m contra parede mais próxima
+a 3,20 m — **margem de 2,36 m, não encosta**.
+
+### O ponto que precisa da decisão de vocês
+
+**"Urso bem grande" e "não atravessar parede" não cabem juntos neste labirinto.** A proporção
+do bicho é raio ≈ 0,37 × altura, e o corredor tem 2,4 m:
+
+| raio do agente | altura possível do urso | quanto do mapa ele alcança |
+|---|---|---|
+| **1,2 (atual)** | **2,7 m** | **93%** |
+| 2,0 | 4,5 m | 65% |
+| 3,0 | 6,8 m | 42% |
+| 4,0 | 9,0 m | 28% |
+
+Escolhi priorizar **não atravessar parede**, que foi o pedido. Para um urso maior, é mudar
+três coisas juntas: a escala do `Modelo`, o `radius` do `NavMeshAgent` **e** o `agentRadius`
+do agent type "Ursao" na janela Navigation, e rebakear.
+
+> **O conserto de raiz é no Blender:** os clipes têm ~2,4 m de deslocamento embutido e o
+> modelo não está na origem. Reexportando com o modelo centrado na origem e a escala
+> aplicada, o `Modelo.localPosition` volta a zero e o urso pode ser bem maior sem estourar
+> o corredor.
+
+### Pivô do Ursão deslocado 8 m — era isso que fazia ele atravessar parede (Claude Opus 5, a pedido da Julia)
+
+Os dois problemas relatados eram **o mesmo problema**.
+
+#### O pivô
+
+Os filhos do modelo (`Armature.001` e `Cube.001`) vinham do FBX com `localPosition` de
+**(8.47, 0, 0)**. Resultado medido: o pivô ficava em `(-73,20 · -0,18 · 91,10)` e o corpo do
+urso em `(-74,83 · 3,95 · 99,10)` — **8,17 m de distância entre onde o NavMesh acha que ele
+está e onde ele aparece**.
+
+Como o agente navega pelo pivô, ele desviava das paredes **corretamente** — só que o corpo,
+8 m adiante, passava por dentro delas. Não era falha de navegação: era o modelo dessincronizado
+do pivô.
+
+**Conserto:** calculei o centro do modelo no espaço local da raiz e apliquei o deslocamento
+inverso nos filhos, de forma que o centro caia sobre o pivô em XZ e **os pés em `y = 0`**.
+
+| | antes | depois |
+|---|---|---|
+| desvio XZ pivô ↔ modelo | **8,17 m** | **0,000 m** |
+| pés em relação ao pivô | −0,39 m | **0,000 m** |
+
+#### O tamanho, de novo
+
+Encontrei o Ursão com escala `(0,972 · 1,019 · 1,344)` — **9,47 × 9,03 × 11,16 m**. Alguém
+aumentou ele no editor depois da última entrega. Medido o que esse tamanho custa:
+
+| raio | largura | alcança do mapa |
+|---|---|---|
+| 5,58 (o tamanho em que estava) | 11,2 m | **11%** |
+| 4,00 | 8,0 m | 28% |
+| 3,00 | 6,0 m | 42% |
+| 2,00 | 4,0 m | 65% |
+| **1,20** | **2,4 m** | **93%** |
+
+Com 11 m de largura ele alcançava **11% do labirinto** — e o agente continuava com raio 1,2,
+que é exatamente a receita para atravessar parede: navegação de bicho pequeno, corpo de bicho
+grande.
+
+**Decisão:** afinei **só a pegada** e **mantive a altura que estava lá** (`escalaY = 1,019`).
+Ele ficou **2,04 × 9,03 × 2,40 m** — um urso de **9 metros de altura**, mais que o dobro da
+Valentina (4,33 m), com pegada de 2,4 m que casa exatamente com `2 × raio do agente`.
+
+#### Testado em Play Mode
+
+| o quê | resultado |
+|---|---|
+| pegada vs agente | 2,40 m vs 2 × 1,2 = 2,40 m — **casam** |
+| corpo dentro de parede | **NÃO**, medido com `OverlapBox` do corpo inteiro durante a caçada a 6,8 m/s |
+| afunda no chão? | **não** — osso mais baixo em `y = 0,500`, pivô em `y = 0,500`, diferença **0,000 m** |
+| caçada | `Hunt` desde o início, `canSee = true`, fechou de 49,8 m para 17,6 m |
+| desfecho | chegou e matou: cena virou `Tela_inicial` |
+
+> **Armadilha, pela segunda vez nesta sessão:** `SkinnedMeshRenderer.bounds` **mente** com
+> animação rodando. Em play ele dizia que os pés estavam em `y = −0,74` (afundado 1,2 m);
+> medindo pelos **ossos**, estavam em `y = 0,500`, exatos. Já tinha caído nisso ao medir a
+> pose sentada da Valentina. **Para medir modelo animado, use osso, nunca bounds.**
+
+### Se quiserem o Ursão mais largo
+
+A altura pode crescer à vontade — não afeta navegação. **A largura é que custa alcance**, e a
+tabela acima dá o preço. Se aumentar a escala X/Z, tem que aumentar junto o `radius` do
+`NavMeshAgent` **e** o `agentRadius` do agent type "Ursao" na janela Navigation, e rebakear —
+senão ele volta a atravessar parede.
+
+### Bake das duas NavMeshes, e um `obstacleMask` que não tinha gravado (Claude Opus 5, a pedido da Julia)
+
+Pedido: dar o bake no mapa para atualizar as colisões.
+
+#### Bake
+
+As duas superfícies da `SampleScene` foram rebakeadas: **`NavMesh`** (agente Humanoid, raio
+0,5 — jogador e cubinhos) e **`NavMesh Ursao`** (agente Ursao, raio 1,2).
+
+A contagem caiu de **3.505 para 2.738 triângulos**, e isso é bom: era malha velha acumulada.
+A cobertura medida numa grade de 783 pontos ficou **melhor** depois:
+
+| malha | cobertura |
+|---|---|
+| Humanoid | **100%** |
+| Ursao | **93%** (era 90%) |
+
+Conferido também: 15/15 cubinhos sobre a malha Humanoid, Ursão sobre a dele a 0,00 m, e
+caminho **`PathComplete` com 14 curvas** do Ursão até a Valentina.
+
+**As outras cenas não têm NavMesh** — `Tela_inicial`, `Tela_1`, `Tela_2` e `Tela_1 1` estão
+com zero superfícies e zero agentes. Não havia o que bakear nelas.
+
+#### O bug que o bake revelou
+
+Ao testar depois do bake, o Ursão estava em `Patrol` com `canSee = false` — a configuração de
+caçar sempre **não tinha gravado**. O `obstacleMask` estava de volta em **0**, e o `Awake` do
+`MonsterAI` trata `obstacleMask == 0` como "assume tudo", ou seja, **parede voltava a bloquear
+a visão dele**.
+
+Causa: eu tinha usado a **layer 31**, e `1 << 31` em C# é `int.MinValue` (o bit de sinal).
+Refeito na **layer 30** (`1 << 30 = 1073741824`, positivo) e gravado por `SerializedObject`.
+Confirmado com recarga da cena: **persistiu**.
+
+> Também me enganei no meio do diagnóstico: li `player = NULO` e `isOnNavMesh = false` e achei
+> que estava tudo quebrado. Estava **fora do Play Mode** — esses dois campos só são
+> preenchidos em runtime. Vale lembrar antes de sair caçando bug que não existe.
+
+#### Estado final, testado
+
+| | |
+|---|---|
+| cubinhos | **15/15** acharam o jogador, **15/15** na malha |
+| Ursão | `Hunt` no primeiro frame, `canSee = true` a **66,9 m** |
+| perseguição | 67 m → 38 m → 28 m a 6,80 m/s |
+| atravessa parede? | **NÃO**, em todos os instantes medidos |
+
+Zero erros e zero warnings.
+
+### Ursão caça sempre, e parou de atravessar parede (Claude Opus 5, a pedido da Julia)
+
+#### Caçar sempre
+
+Tudo por campo do Inspector do `MonsterAI`, sem tocar em código:
+
+| campo | valor | por quê |
+|---|---|---|
+| `obstacleMask` | layer 31 (vazia) | **é a chave**: nada na cena está nessa layer, então o `Linecast` que checa "tem parede no meio?" nunca acerta nada. Ele enxerga através do labirinto inteiro |
+| `viewDistance` / `viewAngle` | 1000 / 360° | vê de qualquer distância, em qualquer direção |
+| `awarenessGain` / `awarenessDecay` | 100 / 0 | certeza imediata, nunca esquece |
+| `menaceLimit` / `maxHuntTime` | 999999 | **nunca recua**. Esses dois são o que fazia ele desistir |
+| `darkViewMultiplier` | 1 | lanterna apagada não esconde dela |
+
+Descobri que `nearSenseRadius` sozinho não resolveria: no `SensePlayer()` o "sente mesmo por
+trás" ainda passa pelo `Linecast` da parede depois. Por isso a `obstacleMask` é o caminho.
+
+**Os cubinhos ficaram como estavam** — `viewDistance` 22, cone de 110°, `menaceLimit` 20.
+Eles continuam só perseguindo quem eles acham.
+
+#### Atravessar parede: a causa e o conserto
+
+A NavMesh do projeto é bakeada para o agente **Humanoid, raio 0,5** (1 m de largura). O Ursão
+usava raio 1,6 e tinha 5,7 m de largura. O caminho era calculado para um bicho cinco vezes
+menor que ele — daí ele cortar quina e entrar na parede.
+
+**Conserto: agent type próprio.** Criado o agent type **"Ursao"** (raio 1,2 · altura 4,6) e um
+segundo `NavMeshSurface` na cena (`NavMesh Ursao`) bakeado só para ele. Agora o caminho dele
+só passa onde ele cabe de verdade.
+
+> Detalhe que me custou duas tentativas: **`NavMesh.GetSettingsByID()` devolve uma cópia**.
+> Mudar `cfg.agentRadius` nela não grava nada, e o bake sai com o raio antigo — por isso as
+> primeiras medições davam 100% de cobertura em qualquer raio. O jeito certo é editar
+> `ProjectSettings/NavMeshAreas.asset` por `SerializedObject`.
+
+#### O tamanho dele foi uma escolha com número
+
+Medido: quanto do labirinto o Ursão alcança, por raio de agente.
+
+| raio | largura dele | quanto do mapa alcança |
+|---|---|---|
+| 2,83 | 5,7 m | **40%** |
+| 2,00 | 4,0 m | 57% |
+| 1,50 | 3,0 m | 72% |
+| **1,20** | **2,4 m** | **90%** |
+| 0,70 | 1,4 m | 100% |
+
+"Urso bem grande" e "ele chega até mim sempre" puxam para lados opostos: o corredor mais
+estreito do labirinto tem 2,1 m. Como o pedido de chegar sempre apareceu duas vezes, priorizei
+alcance — **mas sem encolher o bicho**, com **escala não uniforme**: `(0,212 · 0,519 · 0,212)`.
+
+Ele ficou **1,54 × 4,60 × 2,40 m**: alto e esguio. **Mais alto que a Valentina (4,33 m)**, e com
+pegada de 2,4 m, que é quase a mesma dela (2,17 m) — ou seja, **ele vai aonde ela vai**.
+
+#### Testado em Play Mode
+
+| o quê | resultado |
+|---|---|
+| estado inicial | **`Hunt` no primeiro frame**, `canSee = true` a **69 m de distância, através das paredes** |
+| perseguição | 69 m → 31 m → 21 m, correndo a 6,80 m/s sem parar |
+| atravessa parede? | **NÃO** — cápsula testada contra tudo em vários instantes, só encosta no `Chão` |
+| chegou? | sim: cena virou **`Tela_inicial`** |
+
+Zero erros e zero warnings.
+
+### Se quiserem o Ursão mais gordo
+
+É um número só: `agentRadius` do agent type "Ursao" (janela Navigation) junto com a escala X/Z
+dele. A tabela acima diz o preço em alcance. Com raio 2,0 ele fica com 4 m de largura e
+alcança 57% do mapa — vira um urso que assusta mais mas fica preso em meio labirinto.
+
+### Cubinhos atrasam a Valentina, e o Ursão mata (Claude Opus 5, a pedido da Julia)
+
+#### Duas linhas no `MonsterAI`, e nada mais
+
+O `MonsterAI` já tinha tudo: `OnCatchPlayer()`, o estado `Retreat` que manda o monstro para
+o ponto mais longe do mapa, e `retreatTime` no Inspector. Em vez de escrever IA nova,
+acrescentei só o gancho:
+
+- `public event System.Action<MonsterAI> AoPegarOJogador` — disparado no `OnCatchPlayer()`
+- `public void ForcarRecuo()` — deixa mandar o recuo de fora
+
+Todo o resto vive em componentes novos. O `MonsterAI` não sabe que cubinho ou Ursão existem.
+
+#### Cubinhos que atrasam — `CuboQueAtrasa.cs`
+
+Vai junto com o `MonsterAI` na `Monstro.prefab`, então valeu para os 15 de uma vez.
+
+Encostou na Valentina → ela fica lenta e ele recua. O `retreatTime` do `MonsterAI` foi para
+**30 s**, então é esse o tempo que ele fica longe antes de voltar a procurar.
+
+No `PlayerMovement` entraram `fatorDeLentidao` (0,45 = 45% da velocidade) e
+`duracaoDaLentidao` (**10 s**), mais o método público `AplicarLentidao()`. Encostar de novo
+antes de acabar **renova** o tempo, não soma — senão dois cubos seguidos travariam ela por
+20 s.
+
+#### Ursão — `UrsaoMortal.cs`
+
+O modelo já estava no projeto (`urso grande 1.fbx`), com as três animações prontas:
+**Idle (14,2 s), Run (0,87 s), Walk (1,43 s)**.
+
+**O `ursoanimate.controller` estava quebrado:** nenhum parâmetro, e as transições
+Idle → Run → Walk → Idle **sem condição nenhuma**. Ele ciclava as três animações sozinho
+para sempre, sem relação com o que o urso fazia. Refeito com parâmetro `Speed` e a mesma
+regra do Animator da Valentina (`<0,1` idle · `0,1–0,75` walk · `>0,75` run), para não
+inventar padrão novo. Os três clipes também estavam com `loopTime = false` — agora têm
+`loopTime` e `loopPose`.
+
+O `UrsaoMortal.cs` lê a velocidade do `NavMeshAgent` e escreve no `Speed`; e quando o
+`MonsterAI` pega a Valentina, carrega a cena. Tem trava de `jaMatou` porque o `MonsterAI`
+chama o evento de novo no quadro seguinte e o `LoadScene` dispararia duas vezes.
+
+> **Assumi que "tela de play" é a `Tela_inicial`**, que é a cena com o botão de Play.
+> Está no campo `cenaAoMorrer` do Inspector — se era outra, é uma palavra para trocar.
+
+#### A escala do Ursão foi medida, não chutada
+
+O modelo tem **10,93 m de largura**. Medi 284 corredores do labirinto:
+
+| | largura |
+|---|---|
+| mínima | 2,1 m |
+| 10% | 6,0 m |
+| mediana | 11,1 m |
+| máxima | 39,0 m |
+
+No tamanho original ele trava em boa parte do mapa. Ficou em **escala 0,5 → 5,46 × 4,43 ×
+3,28 m** — ainda maior que a Valentina (4,33 m), e passa em ~90% dos corredores.
+
+#### Testado em Play Mode
+
+| passo | resultado |
+|---|---|
+| cubinho encosta | `🐌 Valentina mais lenta por 10s` + `🟦 Monstro 1 encostou. Recuando por 30s.` |
+| efeito | velocidade caiu de **5 para 2,25**; monstro entrou em `Retreat` e já estava a 10,5 m |
+| 10 s depois | `🏃 Velocidade normal de volta` — `EstaLenta = false` |
+| 30 s depois | monstro voltou de `Retreat` para `Patrol`, caçando de novo |
+| Ursão andando | anima trocou para `Walk` sozinha; ele percorreu ~15 m por trecho de ronda |
+| Ursão pega | cena virou **`Tela_inicial`**, com o `MainMenu` dentro |
+
+Zero erros e zero warnings no console na rodada inteira.
+
+### O que ainda precisa de olho
+
+- **A NavMesh está bakeada para agente de raio 0,5** (1 m de diâmetro), e o Ursão usa raio
+  1,6. Ele anda e persegue — testado — mas o caminho é calculado para um bicho menor do que
+  ele, então em corredor apertado ele vai raspar a parede. **O conserto certo é um segundo
+  `NavMeshSurface` com um agent type próprio para o Ursão**, e aí ele nunca tentaria passar
+  onde não cabe. Não fiz porque muda a configuração de NavMesh do projeto e vale confirmar
+  antes.
+- **16 `MonsterAI` rodando juntos agora** (15 cubos + Ursão). Continua valendo o aviso de
+  desempenho da entrada anterior: se cair fps no PC do laboratório, o primeiro corte é o
+  número de cubos.
+
+### 15 monstros no labirinto e rastro de luz na SampleScene (Claude Opus 5, a pedido da Julia)
+
+#### 15 monstros espalhados
+
+O labirinto é `Global Volume/Labirinto`: um chão de **243 × 223 m** com **583 paredes**.
+
+Os 15 são instâncias da `Assets/Art/Monstro/Monstro.prefab` que já existia, agrupadas em
+`Monstros`. O `Monstro` que já estava na cena virou o primeiro da lista, em vez de ser
+apagado e recriado — nada dele se perdeu.
+
+**Como escolhi onde pôr:** peguei o centro de cada triângulo da NavMesh como candidato
+(1.851 pontos, já descontando tudo a menos de 25 m do spawn) e rodei escolha gulosa do ponto
+mais distante dos já escolhidos. Resultado: **separação mínima de 53,4 m** entre monstros, de
+39 m a 217 m do spawn. Não é aleatório com sorte — é espalhamento medido.
+
+Verificado: **15/15 com `NavMeshAgent` na NavMesh**, todos instâncias da prefab. Em Play
+Mode, 14 dos 15 estavam andando; o outro estava parado, que é comportamento normal do
+`MonsterAI` (ele ronda e espera).
+
+#### Rastro de luz, `RastroDeLuz.cs`
+
+Novo, em `Assets/Scripts/Artscripts/`. Vai na raiz do Player, pela prefab, então vale em
+qualquer cena.
+
+Deixa uma marca acesa no chão a cada **3 m** andados, e **cada marca some sozinha depois de
+180 s (3 minutos)**, apagando no último terço da vida em vez de piscar fora.
+
+**As marcas não são `Light` de verdade, de propósito.** Um rastro com luz real seriam
+dezenas de luzes dinâmicas ao mesmo tempo, e a seção 3 do `CLAUDE.md` pede 40+ fps no PC mais
+fraco do laboratório e a seção 4 limita sombra em tempo real a 2 ou 3 luzes. São plaquinhas
+(`Quad`) com material **unlit transparente**, que custam quase nada. Visualmente lê como
+rastro de luz; no profiler não aparece.
+
+Outros cuidados que estão no código e valem lembrar:
+
+- **Piscina fixa de 200 objetos, criada toda no `Start`.** Zero `Instantiate` ou `Destroy`
+  durante o jogo. Ao estourar o teto, a marca mais velha é reaproveitada.
+- **As marcas não têm `Collider`.** Sem isso elas entrariam na frente do raycast do
+  `InteractionSystem` e o jogador não conseguiria clicar em mais nada.
+- **`MaterialPropertyBlock`** para o esmaecimento, em vez de `material.color` — senão cada
+  marca viraria um material novo, 200 materiais.
+- Sombra desligada (`ShadowCastingMode.Off`, `receiveShadows = false`).
+- A marca é colada no chão por raycast, não na altura do jogador, e fica 3 cm acima para não
+  brigar com o piso.
+- Cor **#643847**, da paleta fechada.
+
+**Testado em Play Mode:**
+
+| o quê | resultado |
+|---|---|
+| piscina | 200 objetos criados no `Start`, todos desligados |
+| andar 4 m | 1 marca, deitada no chão (rotação 90° no X), **sem collider**, sombra off |
+| validade | com `duracao` baixada para 6 s só na medição, as marcas **sumiram sozinhas**; o valor salvo é 180 s |
+| 15 monstros + rastro | zero erros e zero warnings no console |
+
+### O que ainda precisa de olho
+
+- **Não dá para afirmar o custo real em fps.** Medi 184 fps, mas com a janela da Unity sem
+  foco e nesta máquina — não é o PC mais fraco do laboratório, que é o alvo que importa.
+  **Os 15 `MonsterAI` rodando juntos são a parte cara**, não o rastro. Se cair fps na
+  apresentação, o primeiro corte é o número de monstros.
+- `distanciaEntreMarcas`, `duracao` e `maxDeMarcas` são campos no Inspector do Player — dá
+  para afinar sem tocar em código.
+
+### Desafio dos cubos refeito com os scripts que já existiam (Claude Opus 5, a pedido da Julia)
+
+Pedido: refazer os cubos usando **os scripts da própria equipe**, no mesmo molde do `Cube` de
+teste que já estava na `SampleScene` — 5 cubos com condição que somem ao clicar, e um sexto,
+vermelho, que teleporta quando as 5 condições estiverem cumpridas.
+
+**Meus dois scripts do dia anterior (`CuboDoDesafio.cs` e `DesafioDosCubos.cs`) foram
+apagados.** Eles reimplementavam, pior, o que `InterativoCondicao` + `InterativoToggle` +
+`InterativoTrocaCena` já faziam. Conferido por GUID que nenhuma cena ou prefab os usava antes
+de apagar; há backup fora do projeto. Isso segue a seção 5 do `CLAUDE.md`: script que não é
+mais necessário, apaga.
+
+#### Como ficou montado
+
+| objeto | componentes | configuração |
+|---|---|---|
+| `CuboCondicao 1..5` | `InterativoCondicao` + `InterativoToggle` | `objetos = [ele mesmo]`, `iniciarLigado = true` |
+| `CuboTeleporte` | `InterativoTrocaCena` | `nomeDaCena = "Tela_1 1"`, `possuiCondicoes = true`, as 5 condições ligadas |
+
+**O truque do "some ao clicar" é o `objetos` do `InterativoToggle` apontar para o próprio
+cubo.** Ao clicar, ele faz `SetActive(false)` em si mesmo.
+
+E os dois scripts disparam no mesmo clique **de graça**: o `InteractionSystem` faz
+`GetComponentsInParent<MonoBehaviour>()` e chama `Interagir()` em **todo** `IInterativo` que
+achar no objeto. Confirmado no teste: "2 IInterativo chamados" por cubo. Ou seja, um clique
+marca a condição **e** some com o cubo, sem precisar de cola nenhuma.
+
+#### Materiais, dentro da paleta fechada
+
+Criados em `Assets/Art/Materiais/`, usando só cores da seção 4 do `CLAUDE.md`:
+
+- `CuboCondicao.mat` — **#283A4E**, os cinco cubos
+- `CuboTeleporte.mat` — **#D74143**, o vermelho pedido; é o vermelho da paleta, não um
+  vermelho qualquer
+
+O `corNormal` de cada script foi ajustado para a cor do próprio cubo, senão o primeiro
+`Destacar(false)` do `InteractionSystem` pintaria tudo de branco.
+
+#### Testado em Play Mode, o fluxo inteiro
+
+| passo | resultado |
+|---|---|
+| clicar no vermelho **antes** | "Ainda existem condições que não foram cumpridas" — **não troca de cena** |
+| clicar nos 5 cubos | cada um: "Condição: COMPLETA" + "DESLIGADO", e `activeSelf = false` — sumiram |
+| clicar no vermelho **depois** | "Todas as condições foram cumpridas! Abrindo cena." |
+| resultado | cena ativa passou a ser **`Tela_1 1`**, carregada, com o Player dentro |
+
+Zero erros no console. Mirabilidade dos 6 medida com a varredura de sempre: **25 a 36 de 34
+a 36 posições, 50% a 68% da faixa de mira**.
+
+> **Atenção ao nome da cena:** é `Tela_1 1`, **com espaço**, não `Tela1_1`. É o nome real do
+> arquivo e é o que o `SceneManager.LoadScene` recebe. Se alguém renomear a cena, esse campo
+> quebra em silêncio.
+
+### Câmera de 3ª mais curta e corpo some em 1ª pessoa (Claude Opus 5, a pedido da Julia)
+
+#### Distância da 3ª pessoa
+
+Terceiro ajuste no mesmo campo, agora fechando: `cameraDistance` **1,8 → 1,2**, que com o
+Player em escala 2,166 dá **2,60 m**. O histórico: 3,5 (7,58 m) → 1,8 (3,90 m) → **1,2
+(2,60 m)**. Para um personagem de 4,33 m, 2,60 m é bem por cima do ombro.
+
+É um campo só no `CameraController` da `Player.prefab`, e o valor vale "para o Player em
+escala 1" — o código multiplica pela escala real. Para calcular: **metros no jogo =
+`cameraDistance` × 2,166**.
+
+#### O modelo some em 1ª pessoa
+
+Em primeira pessoa a câmera fica dentro do corpo, então dava para ver pescoço e cabelo por
+dentro. Agora o modelo é escondido.
+
+No `CameraController.cs`:
+
+- Campos novos: `modeloDoPlayer` (vazio = acha sozinho pelo `Animator`) e
+  `esconderModeloEmPrimeiraPessoa` (ligado por padrão, desligue para ver o corpo em 1ª).
+- `Awake()` novo, que junta os `Renderer` do modelo. **Precisa ser no `Awake`**: o `Start` já
+  chama `AplicarEstado()`, que decide se o corpo aparece.
+- `MostrarCorpo(bool)` liga e desliga **só os `Renderer`, nunca o `GameObject`** — desligar o
+  objeto pararia o `Animator` e a animação perderia o estado. Confirmado no teste: depois de
+  ida e volta entre as câmeras, o Animator continua no `idle`.
+- **No filminho o corpo aparece.** O `AplicarEstado()` mostra o corpo quando
+  `controleAtivo == false`, porque quem está filmando é a `CameraCinematica` — se seguisse a
+  regra da 1ª pessoa, a Valentina sumiria da própria cutscene.
+
+**Testado em Play Mode, os três estados:**
+
+| estado | corpo | câmera |
+|---|---|---|
+| filminho | **5/5 visível** | cinemática |
+| 1ª pessoa | **0/5** | FirstPersonCamera |
+| 3ª pessoa | **5/5 visível** | ThirdPersonCamera a 2,60 m, alinhada 0,0°, sem atravessar parede |
+| 1ª → 3ª → 1ª | **0/5**, e o Animator continua em `idle` | — |
+
+Zero erros e zero warnings no console na rodada inteira.
+
+### Varredura: tudo o que impedia rodar limpo (Claude Opus 5, a pedido da Julia)
+
+Pedido: *"resolva todos os problemas para rodar tranquilamente agora."*
+
+Auditei as **5 cenas do build**, procurando script faltando, referência quebrada,
+`AudioListener` duplicado e `Camera.main` nulo. Depois rodei `Tela_1` e `SampleScene` em
+Play Mode com o console limpo.
+
+#### Consertado
+
+| problema | onde | conserto |
+|---|---|---|
+| **NavMesh corrompida** — `Invalid serialized file header`, `m_NavMeshData` quebrada, Monstro não funcionava | `SampleScene` | rebake com `NavMeshSurface.BuildNavMesh()` e gravação do asset por cima do arquivo podre |
+| **Dois `AudioListener` ativos** — warning em loop da Unity | `Tela_1` | o listener saiu das câmeras e foi para a **raiz do Player**, na prefab; e o da `CameraCinematica` foi removido |
+| **`Camera.main` = null** — o `MonsterAI.cs` usa `Camera.main` na linha 309 para achar o jogador | `Tela_1`, `Tela_1 1`, `SampleScene` | tag **`MainCamera`** na `FirstPersonCamera`, na prefab. A `ThirdPersonCamera` ficou `Untagged` de propósito, para não haver duas |
+| **Player flutuando 0,90 m** acima do chão | `SampleScene` | descido para `y = 0,426` (chão em 0,406); a `AreaDeSpawn` acompanhou |
+
+O `AudioListener` na raiz do Player resolve de vez: antes ele morava nas câmeras, e como o
+`CameraRail` desliga as câmeras do Player durante o filminho, o listener ia junto. Na raiz
+ele fica sempre ativo, e sempre um só.
+
+#### Resultado medido
+
+| cena | refs quebradas | AudioListeners | `Camera.main` |
+|---|---|---|---|
+| `Tela_inicial` | 0 | 1 | Main Camera |
+| `Tela_1` | 0 | 1 | FirstPersonCamera |
+| `Tela_2` | 0 | 1 | Main Camera |
+| `Tela_1 1` | 0 | 1 | FirstPersonCamera |
+| `SampleScene` | 0 | 1 | FirstPersonCamera |
+
+**Em Play Mode, com o console limpo antes:**
+
+- **`Tela_1`: zero erros, zero warnings.** Filminho rodou, controle voltou, `isGrounded = true`.
+- **`SampleScene`: zero erros, zero warnings.** O Monstro está com `isOnNavMesh = true` e
+  andando (velocidade 2,60) — a NavMesh voltou a funcionar de verdade.
+- **Compilação:** 23 `.cs` no disco, 23 nas assemblies, **nenhum de fora**.
+- **Menu:** o botão da `Tela_inicial` está ligado em `MainMenuManager.PlayGame`, que carrega
+  `Tela_1`, que está no build. O caminho de entrada do jogo fecha.
+
+#### Item do ACHADOS que dá para fechar
+
+**Os dois arquivos de Input System não são um problema.** O `docs/ACHADOS.md` marcava isso
+como 🔴 e como causa clássica de "o input não responde". Verificado por GUID:
+`Assets/NÃO MEXER_/InputSystem_Actions.inputactions` (o template da Unity) é referenciado por
+**zero** arquivos — está inerte. O de verdade,
+`Assets/Scripts/Player e Câmera/PlayerInputActions.inputactions`, é o que está ligado na
+`Player.prefab` e nas cenas de `_Recovery`. **Não é preciso apagar nada para o input
+funcionar.**
+
+### O que NÃO mexi, de propósito
+
+- **`Tela_1 1.unity` está ligada nas cenas do build**, junto com a `SampleScene`. As duas vão
+  para dentro do `.exe`. Mexer nisso é **Build Settings**, que a seção 10 do `CLAUDE.md`
+  proíbe para o agente. Decisão de vocês, e é um clique: `File > Build Settings`, desmarcar.
+- **`ConfigurarMaterialesMadeira.cs`** continua apontando para um FBX que nunca entrou no
+  repositório. É Editor Script, trata com dialog e não quebra a build — não atrapalha rodar.
+- **Escala do Player (2,166)** dentro de um quarto que não foi feito para ela. É o item de
+  escala do `docs/ACHADOS.md`, e é decisão do JP.
+
+### Câmera mais perto, e desafio dos 5 cubos na SampleScene (Claude Opus 5, a pedido da Julia)
+
+#### Câmera menos distante
+
+Ontem a câmera de 3ª pessoa passou a multiplicar os valores do Inspector pela escala do
+Player, e com `cameraDistance = 3,5` isso virou **7,58 m** — longe demais.
+
+Na `Player.prefab`: `cameraDistance` **3,5 → 1,8** (3,90 m no mundo) e `cameraHeight`
+**1 → 0,5** (1,08 m acima do pivô, era 2,17 m). O `cameraHeight` menor também tira a origem
+do teste de parede de dentro do `Teto`, que era o caso degenerado de ontem — agora ela nem
+chega lá.
+
+São dois campos no Inspector do Player. Mexa à vontade: os valores valem "para o Player em
+escala 1" e o código multiplica pela escala real.
+
+#### Desafio dos 5 cubos
+
+Pedido: cinco cubos perto do Player na `SampleScene`; interagir com os cinco e depois voltar
+para a área de spawn.
+
+**Dois scripts novos em `Assets/Scripts/ObjetosScripts/`:**
+
+- **`CuboDoDesafio.cs`** — implementa `IInterativo`, então funciona com o `InteractionSystem`
+  que já existe, sem mexer nele. Cada cubo conta **uma vez só**; interagir de novo só loga.
+  Troca de cor em três estados (normal / em destaque / coletado), usando `_BaseColor` na URP
+  com queda para `_Color` no shader padrão.
+- **`DesafioDosCubos.cs`** — conta os coletados, e quando fecha os cinco pede para voltar.
+  Fica checando a distância do jogador até a `areaDeSpawn` (só no plano do chão, para pular
+  ou degrau não atrapalhar) e conclui quando ele entra no raio. Tem `Reiniciar()` público e
+  desenha um **gizmo verde** da área na janela Scene.
+
+**Montado na `SampleScene`:** objeto `DesafioDosCubos` com os filhos `AreaDeSpawn` (no ponto
+onde o Player nasce, raio 4 m) e `Cubos` com os 5 cubos, em arco a 6 m do Player, nos ângulos
+0°, 60°, 120°, 240° e 300°. Cada cubo é 1,5 × 3 × 1,5 m, apoiado no chão — **altos de
+propósito**, para ficarem na linha de visão de um personagem de 4,3 m.
+
+**Mirabilidade medida** (mesma varredura usada no ursinho), com `distanciaInteracao = 3 m`:
+
+| cubo | posições que conseguem mirar | faixa de mira |
+|---|---|---|
+| 1, 4, 5 | 36/36 | 68% |
+| 2, 3 | 25/34 | 50% |
+
+Para comparar: o ursinho da `Tela_1 1`, depois de consertado, dá 19/62 e 12%. Estes são
+fáceis de acertar.
+
+**Testado em Play Mode, o fluxo inteiro:**
+
+| passo | resultado |
+|---|---|
+| interagir com 4 cubos | contagem 1, 2, 3, 4 |
+| interagir de novo no cubo 1 | continua 4 — não conta duas vezes |
+| pegar o 5º **longe** do spawn | 5/5, `concluido = False`, loga "volte para a área de spawn" |
+| voltar a 6 m do centro (fora do raio 4 m) | `concluido = False` |
+| entrar a 1,5 m do centro | **`concluido = True`**, loga "DESAFIO CONCLUÍDO" |
+
+### Duas armadilhas encontradas no caminho
+
+1. **A Unity se recusou a compilar o `DesafioDosCubos.cs` por entrada corrompida na
+   `Library`.** O arquivo existia, era C# válido, aparecia no `AssetDatabase` como
+   `MonoScript` e tinha `.meta` com GUID — mas **não estava na lista de fontes da
+   `Assembly-CSharp`** (20 arquivos em vez de 21), e por causa disso a assembly inteira ficava
+   quebrada, com um `CS0246` enganoso apontando para o *outro* arquivo. Não adiantou
+   `Refresh`, `ImportAsset` com `ForceUpdate`, apagar o `.meta`, nem
+   `RequestScriptCompilation` com `CleanBuildCache`. **O que resolveu:** `AssetDatabase
+   .DeleteAsset` no arquivo e recriar em seguida. Se acontecer de novo, é esse o caminho —
+   e dá para conferir com `CompilationPipeline.GetAssemblies()` comparando com os `.cs` do
+   disco.
+2. **`collider.bounds` mente logo depois de criar objetos por código no editor.** A primeira
+   medição de mirabilidade deu **0% nos cinco cubos**, porque os `bounds` ainda reportavam a
+   origem do mundo. Falta `Physics.SyncTransforms()`. Depois dele, 50–68%.
+
+### Achado de passagem, não é meu para consertar
+
+**A NavMesh da `SampleScene` está corrompida.** O console diz
+`Invalid serialized file header. File: "Assets/Scenes/SampleScene/NavMesh-SampleScene.asset"`
+e em seguida `Failed to create agent because there is no valid NavMesh` — o Monstro não
+funciona nessa cena. Não tem relação com os cubos. Conserto: selecionar o objeto `NavMesh`
+na cena e clicar em **Bake**.
+
+---
+
 ## 22/09/2026 (segunda)
 
 ### Fim do trilho devolve a gameplay + canvas somem no filminho (Claude Opus 5, a pedido da Julia)
@@ -449,6 +1178,66 @@ nada. Varredura de 360 pontos na sala: **zero buracos no chão**.
   tocada aqui.
 
 ---
+## 22/09/2026 (terça) — 4 dias para a FECART
+
+### `MonsterAI` v3 — ele agora tem um mapa mental de onde você pode estar
+
+JP: *"melhora ainda mais a IA, procura formas e pesquisa sobre outras IAs perseguidoras
+que pode servir de base."* Pesquisadas três referências e trazido o que dá para medir:
+
+| Referência | O que foi copiado |
+|---|---|
+| **Alien: Isolation** (Creative Assembly) | cones de visão sobrepostos · medidor de ameaça (*menace gauge*) para dosar o recuo · busca em anel (*donut search*) ao reabrir a procura |
+| **Halo 3 / Third Eye Crime** (Damián Isla) | **occupancy map** — a crença do monstro sobre onde você está, difundida pela NavMesh |
+| **Resident Evil 2 remake** (Mr. X) | os sentidos apertam quanto mais tempo ele passa sem te achar |
+
+**O que entrou:**
+
+- **`OccupancyMap.cs`** (arquivo novo) — grade de 4 m sobre a NavMesh, 3.534 células
+  andáveis no labirinto. Ver ela = toda a certeza numa célula; o tempo passar = a certeza
+  escorre para as vizinhas **andáveis** (não atravessa parede); olhar para um canto = aquele
+  canto zera. A busca varre corredor, segue porta e **nunca volta para onde ele acabou de
+  olhar** — sem nenhuma regra dizendo isso, é o que emerge das três operações.
+- **Difusão direcional** — a dúvida escorre para o lado em que ela sumiu, não em círculo.
+- **Busca em anel** — varreu tudo e não achou? Enquanto a pista for recente ele conclui
+  "ela foi mais longe do que eu achava" e semeia um anel no raio que ela já teria alcançado.
+  Antes disso ele desistia em 6 s.
+- **Quem encerra a busca é a pista esfriar** (`searchGiveUpTime`, 45 s), não um cronômetro.
+- **Três cones de visão** — frente (22 m/110°), canto do olho (10 m/200°, desconfia mais
+  devagar) e colado (4 m, por trás inclusive).
+- **Escuro conta**: com a lanterna dela apagada o alcance dele cai 35 %.
+- **Medidor de ameaça** no lugar do cronômetro de caçada: recuar depende da **pressão que
+  ele já colocou em você** (perto e te vendo pesa 3x mais que longe), não do relógio.
+- **Faro que aperta**: 40 s sem nenhum sinal e visão/audição ganham +60 % de alcance.
+
+**Medido em Play Mode**, mesmo cenário nos dois: ela é vista, corre 79 m em sprint pelo
+labirinto e se esconde.
+
+| | com o mapa | sem o mapa (v2) |
+|---|---|---|
+| Chegou a que distância dela | **12,7 m** | 32,1 m |
+| Tempo procurando | **41 s** | 16 s |
+| Distância andada | 214 m | 208 m |
+
+Com tudo ligado (Director + emboscada), no mesmo cenário, ele **achou ela** (0,0 m) em 15 s.
+
+**Custo: 0,025 ms por passo do mapa, 0,13 ms por segundo de jogo.** Não encosta nos 40 fps.
+
+**Fontes consultadas** (para a Declaração de Uso de IA):
+- *Revisiting the AI of Alien: Isolation* — Tommy Thompson, AI and Games
+  https://www.aiandgames.com/p/revisiting-alien-isolation
+- *The Perfect Organism: The AI of Alien: Isolation* — Game Developer
+  https://www.gamedeveloper.com/design/the-perfect-organism-the-ai-of-alien-isolation
+- *Third Eye Crime: Building a Stealth Game Around Occupancy Maps* — Damián Isla (AIIDE)
+  https://cdn.aaai.org/ojs/12663/12663-52-16180-1-2-20201228.pdf
+- *Resident Evil 2 director talks Mr. X's AI* — PC Gamer
+  https://www.pcgamer.com/resident-evil-2s-director-talks-mr-xs-ai-scary-footsteps-and-the-dmx-mod/
+
+**Como a equipe mexe nisso (Julia/Letícia):** tudo é campo do Inspector no
+`Assets/Art/Monstro/Monstro.prefab`, agrupado em `[Header]`. Para **ver** a cabeça dele:
+Play → selecionar `Monstro` → os quadrados laranja na Scene são onde ele acha que você
+está. Desligar em `showMemoryGizmo`; desligar o sistema todo em `memoryEnabled` (ele volta
+para a busca da v2 sem quebrar nada).
 
 ## 16/09/2026 (quarta) — véspera do BETA
 
